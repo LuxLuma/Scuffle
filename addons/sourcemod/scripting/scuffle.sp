@@ -48,6 +48,13 @@ stock L4D2_Stagger(iClient, Float:fPos[3])
 	L4D2_RunScript("GetPlayerFromUserID(%d).Stagger(Vector(%d,%d,%d))", GetClientUserId(iClient), RoundFloat(fPos[0]), RoundFloat(fPos[1]), RoundFloat(fPos[2]));
 }
 
+/*
+	iClient = client
+	fStartTime = GetGameTime() to start the bar at the time you want.
+	fDuration = GetGameTime() + 5 Progress bar will finish in 5secs
+	sBarTxt = "Mash key to get up"
+	any:... = any thing you want to add in sBarTxt string
+*/
 static ShowProgressBar(iClient, const Float:fStartTime, const Float:fDuration, const String:sBarTxt[], any:...)
 {
 	static String:sBuffer[64];
@@ -58,6 +65,9 @@ static ShowProgressBar(iClient, const Float:fStartTime, const Float:fDuration, c
 	SetEntPropString(iClient, Prop_Send, "m_progressBarText", sBuffer);
 }
 
+/*
+ Simple revive func just feed it client index and will get 50 temp hp
+*/
 static ReviveClient(iClient)
 {
 	static iIncapCount;
