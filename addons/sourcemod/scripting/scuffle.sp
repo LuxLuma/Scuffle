@@ -105,7 +105,7 @@ static ShowProgressBar(iClient, const Float:fStartTime, const Float:fDuration, c
 
 	SetEntPropFloat(iClient, Prop_Send, "m_flProgressBarStartTime", fStartTime);
 	SetEntPropFloat(iClient, Prop_Send, "m_flProgressBarDuration", fDuration);
-	SetEntPropString(iClient, Prop_Send, "m_progressBarText", sBuffer);
+	//SetEntPropString(iClient, Prop_Send, "m_progressBarText", sBuffer);
 }
 
 /*
