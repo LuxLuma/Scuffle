@@ -9,10 +9,17 @@
 #include <sdktools>
 #include <sdkhooks>
 #define PLUGIN_NAME "Scuffle"
-#define PLUGIN_VERSION "0.0.2"
+#define PLUGIN_VERSION "0.0.3"
 
+int g_limit;
+ConVar g_cvLimit;
 int limits[MAXPLAYERS + 1];  // how many times can someone save themselves?
+
+char g_requires[256];
+ConVar g_cvRequires;
 int requires[MAXPLAYERS + 1];  // pills, shot, kit?
+
+char g_requireArray[32][32];
 
 public Plugin myinfo= {
     name = PLUGIN_NAME,
@@ -22,10 +29,96 @@ public Plugin myinfo= {
     url = ""
 }
 
+public void OnMapStart() {
+    for (int i = 1; i <= MaxClients; i++) {
+        limits[i] = g_limit;
+    }
+}
+
+bool IsEntityValid(int ent) {
+    return (ent > MaxClients && ent <= 2048 && IsValidEntity(ent));
+}
+
+public void OnPluginStart() {
+     SetupCvar(g_cvLimit, "scuffle_limit", "-1", "-1: Infinitely, >0: Is a hard limit");
+     SetupCvar(g_cvRequires, "scuffle_requires", "", "Semicolon separated values of inv slots 4 & 5");
+     AutoExecConfig(true, "scuffle");
+}
+
+void SetupCvar(Handle &cvHandle, char[] name, char[] value, char[] details) {
+    cvHandle = CreateConVar(name, value, details);
+    HookConVarChange(cvHandle, UpdateConVarsHook);
+    UpdateConVarsHook(cvHandle, value, value);
+}
+
+public void UpdateConVarsHook(Handle cvHandle, const char[] oldVal, const char[] newVal) {
+    char cvName[32], cvVal[128];
+    GetConVarName(cvHandle, cvName, sizeof(cvName));
+    Format(cvVal, sizeof(cvVal), "%s", newVal);
+    SetConVarString(cvHandle, newVal);
+
+    if (newVal[0] == EOS) {
+        return;
+    }
+
+    if (StrEqual(cvName, "scuffle_limit")) {
+        g_limit = GetConVarInt(cvHandle);
+        OnMapStart();  // will reset all player limits
+    }
+
+    else if (StrEqual(cvName, "scuffle_requires")) {
+        for (int i = 0; i < sizeof(g_requireArray[]); i++) {
+            switch (g_requireArray[i][0] != EOS) {
+                case 1: g_requireArray[i] = "";
+                case 0: break;
+            }
+        }
+
+        GetConVarString(cvHandle, g_requires, sizeof(g_requires));
+        ExplodeString(cvVal, ";", g_requireArray, 32, sizeof(g_requireArray[]));
+    }
+}
+
+bool HasRequirement(int client, const char item[32]) {
+    for (int i = 0; i < sizeof(g_requireArray[]); i++) {
+        if (g_requireArray[i][0] == EOS) {
+            switch (i == 0) {
+                case 1: return true;
+                case 0: return false;
+            }
+        }
+
+        if (StrContains(item, g_requireArray[i]) >= 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool CanPlayerScuffle(int client) {
+    // check if the player has the ability to get up, e.g., pills, tries, etc
+    static char item[32];
+    static ent;
+
+    for (int i = 4; i >= 3; i--) {  // check pills, then kits, etc
+        ent = GetPlayerWeaponSlot(client, i);
+
+        if (IsEntityValid(ent)) {
+            GetEntityClassname(ent, item, sizeof(item));
+            if (HasRequirement(client, item)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon) {
     static int lastKeyPress[MAXPLAYERS + 1];
     static float strugglers[MAXPLAYERS + 1];
-    static float duration = 30.0;
+    static float duration = 1.0;
     static float gameTime;
     static int attackerId;
 
@@ -68,11 +161,6 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
             lastKeyPress[client] = 0;
         }
     }
-}
-
-bool CanPlayerScuffle(int client) {
-    // check if the player has the ability to get up, e.g., pills, tries, etc
-    return true;
 }
 
 void ResetAbility(int attacker) {
@@ -138,7 +226,7 @@ stock L4D2_RunScript(const String:sCode[], any:...)
 stock L4D2_Stagger(iClient, Float:fPos[3]=NULL_VECTOR, bool:bResetStagger=false)
 {
 	L4D2_RunScript("GetPlayerFromUserID(%d).Stagger(Vector(%d,%d,%d))", GetClientUserId(iClient), RoundFloat(fPos[0]), RoundFloat(fPos[1]), RoundFloat(fPos[2]));
-	
+
 	if(bResetStagger)
 		SetEntPropFloat(iClient, Prop_Send, "m_staggerTimer", 0.0, 1);
 }
