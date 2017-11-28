@@ -41,9 +41,9 @@ bool IsEntityValid(int ent) {
 }
 
 public void OnPluginStart() {
-     SetupCvar(g_cvLimit, "scuffle_limit", "-1", "-1: Infinitely, >0: Is a hard limit");
-     SetupCvar(g_cvRequires, "scuffle_requires", "", "Semicolon separated values of inv slots 4 & 5");
-     AutoExecConfig(true, "scuffle");
+    SetupCvar(g_cvLimit, "scuffle_limit", "-1", "-1: Infinitely, >0: Is a hard limit");
+    SetupCvar(g_cvRequires, "scuffle_requires", "", "Semicolon separated values of inv slots 4 & 5");
+    AutoExecConfig(true, "scuffle");
 }
 
 void SetupCvar(Handle &cvHandle, char[] name, char[] value, char[] details) {
@@ -158,9 +158,9 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 
             if (gameTime - duration >= strugglers[client]) {
                 if (attackerId > 0) {
-                	static Float:fPos[3];
-                	GetClientAbsOrigin(client, fPos);
-                    L4D2_Stagger(attackerId, 2.0, fPos);
+                    static Float:fPos[3];
+                    GetClientAbsOrigin(client, fPos);
+                    L4D2_Stagger(attackerId, true, fPos);
                     //ResetAbility(attackerId);
                 }
 
@@ -229,96 +229,94 @@ bool IsPlayerInTrouble(int client, int &attackerId) {
 // CREDITS TO Timocop for L4D2_RunScript function and L4D2_Stagger function
 stock L4D2_RunScript(const String:sCode[], any:...)
 {
-	static iScriptLogic = INVALID_ENT_REFERENCE;
-	if(iScriptLogic == INVALID_ENT_REFERENCE || !IsValidEntity(iScriptLogic)) {
-		iScriptLogic = EntIndexToEntRef(CreateEntityByName("logic_script"));
-		if(iScriptLogic == INVALID_ENT_REFERENCE || !IsValidEntity(iScriptLogic))
-		{
-			SetFailState("Could not create 'logic_script'");
+    static iScriptLogic = INVALID_ENT_REFERENCE;
+    if(iScriptLogic == INVALID_ENT_REFERENCE || !IsValidEntity(iScriptLogic)) {
+        iScriptLogic = EntIndexToEntRef(CreateEntityByName("logic_script"));
+        if(iScriptLogic == INVALID_ENT_REFERENCE || !IsValidEntity(iScriptLogic))
+        {
+            SetFailState("Could not create 'logic_script'");
         }
 
-		DispatchSpawn(iScriptLogic);
-	}
+        DispatchSpawn(iScriptLogic);
+    }
 
-	static String:sBuffer[512];
-	VFormat(sBuffer, sizeof(sBuffer), sCode, 2);
+    static String:sBuffer[512];
+    VFormat(sBuffer, sizeof(sBuffer), sCode, 2);
 
-	SetVariantString(sBuffer);
-	AcceptEntityInput(iScriptLogic, "RunScriptCode");
+    SetVariantString(sBuffer);
+    AcceptEntityInput(iScriptLogic, "RunScriptCode");
 }
 
 // use this to stagger survivor/infected (vector stagger away from origin)
-stock L4D2_Stagger(iClient, const Float:fStaggerTime=-1.0, const Float:fPos[3]=NULL_VECTOR)
+stock L4D2_Stagger(iClient, bool:bResetStagger=false, Float:fPos[3]=NULL_VECTOR)
 {
-	L4D2_RunScript("GetPlayerFromUserID(%d).Stagger(Vector(%d,%d,%d))", GetClientUserId(iClient), RoundFloat(fPos[0]), RoundFloat(fPos[1]), RoundFloat(fPos[2]));
+    L4D2_RunScript("GetPlayerFromUserID(%d).Stagger(Vector(%d,%d,%d))", GetClientUserId(iClient), RoundFloat(fPos[0]), RoundFloat(fPos[1]), RoundFloat(fPos[2]));
 
-	if(fStaggerTime < 0)
-		return;
-	
-	SetEntPropFloat(iClient, Prop_Send, "m_staggerTimer", fStaggerTime, 1);
+    if(bResetStagger)
+        SetEntPropFloat(iClient, Prop_Send, "m_staggerTimer", 0.0, 1);
 }
 
 /*
-	iClient = client
-	fStartTime = GetGameTime() to start the bar at the time you want.
-	fDuration = GetGameTime() + 5 Progress bar will finish in 5secs
+    iClient = client
+    fStartTime = GetGameTime() to start the bar at the time you want.
+    fDuration = GetGameTime() + 5 Progress bar will finish in 5secs
 */
 static ShowProgressBar(iClient, const Float:fStartTime, const Float:fDuration)
 {
-	SetEntPropFloat(iClient, Prop_Send, "m_flProgressBarStartTime", fStartTime);
-	SetEntPropFloat(iClient, Prop_Send, "m_flProgressBarDuration", fDuration);
+    SetEntPropFloat(iClient, Prop_Send, "m_flProgressBarStartTime", fStartTime);
+    SetEntPropFloat(iClient, Prop_Send, "m_flProgressBarDuration", fDuration);
 }
 
 /*
- Simple revive func just feed it client index and will get 50 temp hp
+Simple revive func just feed it client index and will get 50 temp hp
 */
 static ReviveClient(iClient)
 {
-	static iIncapCount;
-	iIncapCount = GetEntProp(iClient, Prop_Send, "m_currentReviveCount") + 1;
+    static iIncapCount;
+    iIncapCount = GetEntProp(iClient, Prop_Send, "m_currentReviveCount") + 1;
 
-	Client_ExecuteCheat(iClient, "give", "health");
-	SetEntityHealth(iClient, 1);
-	SetEntProp(iClient, Prop_Send, "m_currentReviveCount", iIncapCount);
+    Client_ExecuteCheat(iClient, "give", "health");
+    SetEntityHealth(iClient, 1);
+    SetEntProp(iClient, Prop_Send, "m_currentReviveCount", iIncapCount);
 
-	L4D_SetPlayerTempHealth(iClient, GetSurvivorReviveHealth());
+    L4D_SetPlayerTempHealth(iClient, GetSurvivorReviveHealth());
 
-	if(GetMaxReviveCount() <= GetEntProp(iClient, Prop_Send, "m_currentReviveCount"))
-		SetEntProp(iClient, Prop_Send, "m_bIsOnThirdStrike", 1, 1);
+    if(GetMaxReviveCount() <= GetEntProp(iClient, Prop_Send, "m_currentReviveCount"))
+        SetEntProp(iClient, Prop_Send, "m_bIsOnThirdStrike", 1, 1);
 }
 
 static Client_ExecuteCheat(iClient, const String:sCmd[], const String:sArgs[])
 {
-	new flags = GetCommandFlags(sCmd);
-	SetCommandFlags(sCmd, flags & ~FCVAR_CHEAT);
-	FakeClientCommand(iClient, "%s %s", sCmd, sArgs);
-	SetCommandFlags(sCmd, flags | FCVAR_CHEAT);
+    new flags = GetCommandFlags(sCmd);
+    SetCommandFlags(sCmd, flags & ~FCVAR_CHEAT);
+    FakeClientCommand(iClient, "%s %s", sCmd, sArgs);
+    SetCommandFlags(sCmd, flags | FCVAR_CHEAT);
 }
 
 static GetSurvivorReviveHealth()
 {
-	static Handle:hSurvivorReviveHealth = INVALID_HANDLE;
-	if (hSurvivorReviveHealth == INVALID_HANDLE) {
-		hSurvivorReviveHealth = FindConVar("survivor_revive_health");
-		if (hSurvivorReviveHealth == INVALID_HANDLE) {
-			SetFailState("'survivor_revive_health' Cvar not found!");
-		}
-	}
+    static Handle:hSurvivorReviveHealth = INVALID_HANDLE;
+    if (hSurvivorReviveHealth == INVALID_HANDLE) {
+        hSurvivorReviveHealth = FindConVar("survivor_revive_health");
+        if (hSurvivorReviveHealth == INVALID_HANDLE) {
+            SetFailState("'survivor_revive_health' Cvar not found!");
+        }
+    }
 
-	return GetConVarInt(hSurvivorReviveHealth);
+    return GetConVarInt(hSurvivorReviveHealth);
 }
 
 static GetMaxReviveCount()
 {
-	static Handle:hMaxReviveCount = INVALID_HANDLE;
-	if (hMaxReviveCount == INVALID_HANDLE) {
-		hMaxReviveCount = FindConVar("survivor_max_incapacitated_count");
-		if (hMaxReviveCount == INVALID_HANDLE) {
-			SetFailState("'survivor_max_incapacitated_count' Cvar not found!");
-		}
-	}
+    static Handle:hMaxReviveCount = INVALID_HANDLE;
+    if (hMaxReviveCount == INVALID_HANDLE) {
+        hMaxReviveCount = FindConVar("survivor_max_incapacitated_count");
+        if (hMaxReviveCount == INVALID_HANDLE) {
+            SetFailState("'survivor_max_incapacitated_count' Cvar not found!");
+        }
+    }
 
-	return GetConVarInt(hMaxReviveCount);
+    return GetConVarInt(hMaxReviveCount);
 }
 
 //l4d_stocks include
