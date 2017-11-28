@@ -135,9 +135,12 @@ stock L4D2_RunScript(const String:sCode[], any:...)
 }
 
 // use this to stagger survivor/infected (vector stagger away from origin)
-stock L4D2_Stagger(iClient, Float:fPos[3]=NULL_VECTOR)
+stock L4D2_Stagger(iClient, Float:fPos[3]=NULL_VECTOR, bool:bResetStagger=false)
 {
 	L4D2_RunScript("GetPlayerFromUserID(%d).Stagger(Vector(%d,%d,%d))", GetClientUserId(iClient), RoundFloat(fPos[0]), RoundFloat(fPos[1]), RoundFloat(fPos[2]));
+	
+	if(bResetStagger)
+		SetEntPropFloat(iClient, Prop_Send, "m_staggerTimer", 0.0, 1);
 }
 
 /*
