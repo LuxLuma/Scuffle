@@ -13,13 +13,13 @@
 
 int g_limit;
 ConVar g_cvLimit;
-int limits[MAXPLAYERS + 1];  // how many times can someone save themselves?
+int g_limits[MAXPLAYERS + 1];  // how many times can someone save themselves?
 
-char g_requires[256];
+char g_requires[1024];
 ConVar g_cvRequires;
-int requires[MAXPLAYERS + 1];  // pills, shot, kit?
+char g_requirements[32][32];  // pills, shot, kit?
 
-char g_requireArray[32][32];
+int g_payments[MAXPLAYERS + 1];  // player pays off requirements here
 
 public Plugin myinfo= {
     name = PLUGIN_NAME,
@@ -31,7 +31,8 @@ public Plugin myinfo= {
 
 public void OnMapStart() {
     for (int i = 1; i <= MaxClients; i++) {
-        limits[i] = g_limit;
+        g_limits[i] = g_limit;
+        g_payments[i] = 0;
     }
 }
 
@@ -67,28 +68,28 @@ public void UpdateConVarsHook(Handle cvHandle, const char[] oldVal, const char[]
     }
 
     else if (StrEqual(cvName, "scuffle_requires")) {
-        for (int i = 0; i < sizeof(g_requireArray[]); i++) {
-            switch (g_requireArray[i][0] != EOS) {
-                case 1: g_requireArray[i] = "";
+        for (int i = 0; i < sizeof(g_requirements[]); i++) {
+            switch (g_requirements[i][0] != EOS) {
+                case 1: g_requirements[i] = "";
                 case 0: break;
             }
         }
 
         GetConVarString(cvHandle, g_requires, sizeof(g_requires));
-        ExplodeString(cvVal, ";", g_requireArray, 32, sizeof(g_requireArray[]));
+        ExplodeString(cvVal, ";", g_requirements, 32, sizeof(g_requirements[]));
     }
 }
 
-bool HasRequirement(int client, const char item[32]) {
-    for (int i = 0; i < sizeof(g_requireArray[]); i++) {
-        if (g_requireArray[i][0] == EOS) {
+bool HasRequirement(const char item[32]) {
+    for (int i = 0; i < sizeof(g_requirements[]); i++) {
+        if (g_requirements[i][0] == EOS) {
             switch (i == 0) {
                 case 1: return true;
                 case 0: return false;
             }
         }
 
-        if (StrContains(item, g_requireArray[i]) >= 0) {
+        if (StrContains(item, g_requirements[i]) >= 0) {
             return true;
         }
     }
@@ -101,12 +102,21 @@ bool CanPlayerScuffle(int client) {
     static char item[32];
     static ent;
 
+    if (g_limits[client] == 0) {
+        return false;
+    }
+
+    if (g_requirements[0][0] == EOS) {
+        return true;
+    }
+
     for (int i = 4; i >= 3; i--) {  // check pills, then kits, etc
         ent = GetPlayerWeaponSlot(client, i);
 
         if (IsEntityValid(ent)) {
             GetEntityClassname(ent, item, sizeof(item));
-            if (HasRequirement(client, item)) {
+            if (HasRequirement(item)) {
+                g_payments[client] = ent;
                 return true;
             }
         }
@@ -121,6 +131,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
     static float duration = 1.0;
     static float gameTime;
     static int attackerId;
+    static int ent;
 
     attackerId = 0;
     gameTime = GetGameTime();
@@ -148,10 +159,21 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
             if (gameTime - duration >= strugglers[client]) {
                 if (attackerId > 0) {
                     L4D2_Stagger(attackerId);
-                    ResetAbility(attackerId);
+                    //ResetAbility(attackerId);
                 }
 
                 ReviveClient(client);
+
+                if (g_limits[client] > 0) {
+                    g_limits[client]--;
+                }
+
+                ent = g_payments[client];
+                if (IsEntityValid(ent)) {
+                    RemovePlayerItem(client, ent);
+                    AcceptEntityInput(ent,"kill");
+                }
+
                 // and penalize ...
             }
         }
@@ -159,13 +181,14 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
         else {
             strugglers[client] = 0.0;
             lastKeyPress[client] = 0;
+            g_payments[client] = 0;
         }
     }
 }
 
-void ResetAbility(int attacker) {
-    // It would be nice to reset an SI special attack
-}
+// void ResetAbility(int attacker) {
+//     // It would be nice to reset an SI special attack
+// }
 
 bool IsPlayerInTrouble(int client, int &attackerId) {
 
