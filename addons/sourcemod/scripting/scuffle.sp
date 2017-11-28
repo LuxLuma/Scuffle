@@ -11,6 +11,9 @@
 #define PLUGIN_NAME "Scuffle"
 #define PLUGIN_VERSION "0.0.2"
 
+int limits[MAXPLAYERS + 1];  // how many times can someone save themselves?
+int requires[MAXPLAYERS + 1];  // pills, shot, kit?
+
 public Plugin myinfo= {
     name = PLUGIN_NAME,
     author = "Lux & Victor \"NgBUCKWANGS\" Gonzalez",
@@ -19,24 +22,69 @@ public Plugin myinfo= {
     url = ""
 }
 
-
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon) {
+    static int lastKeyPress[MAXPLAYERS + 1];
+    static float strugglers[MAXPLAYERS + 1];
+    static float duration = 30.0;
+    static float gameTime;
     static int attackerId;
-    attackerId = 0;
 
-    if (IsPlayerInTrouble(client, attackerId)) {
-        if (attackerId != 0) {
-            PrintToServer("Player in Trouble (%d)", attackerId);
+    attackerId = 0;
+    gameTime = GetGameTime();
+
+    if (IsClientConnected(client) && GetClientTeam(client) == 2 && !IsFakeClient(client)) {
+        if (IsPlayerInTrouble(client, attackerId) && CanPlayerScuffle(client)) {
+            if (!strugglers[client]) {
+                strugglers[client] = gameTime;
+            }
+
+            else if (gameTime + duration - strugglers[client] > duration) {
+                switch (buttons == IN_JUMP) {
+                    case 1: strugglers[client] -= 0.1;
+                    case 0: strugglers[client] += 0.5;
+                }
+            }
+
+            if (lastKeyPress[client] != IN_JUMP && buttons == IN_JUMP) {
+                strugglers[client] -= 1.9;
+            }
+
+            ShowProgressBar(client, strugglers[client], duration);
+            lastKeyPress[client] = buttons;
+
+            if (gameTime - duration >= strugglers[client]) {
+                if (attackerId > 0) {
+                    L4D2_Stagger(attackerId);
+                    ResetAbility(attackerId);
+                }
+
+                ReviveClient(client);
+                // and penalize ...
+            }
+        }
+
+        else {
+            strugglers[client] = 0.0;
+            lastKeyPress[client] = 0;
         }
     }
+}
+
+bool CanPlayerScuffle(int client) {
+    // check if the player has the ability to get up, e.g., pills, tries, etc
+    return true;
+}
+
+void ResetAbility(int attacker) {
+    // It would be nice to reset an SI special attack
 }
 
 bool IsPlayerInTrouble(int client, int &attackerId) {
 
     /* Check if player is being attacked and is immobilized. If the player is
-    not being attacked, check if they're incapicated. Attacker ids > 0 mean an
-    SI is attacking the player. An attacker id of -1 means the player's hanging
-    from a ledge. An attacker id of -2 means the player is rotting.
+    not being attacked, check if they're incapacitated. An attackerId > 0 is the
+    ID of the SI attacking the player. An attackerId of -1 means the player is
+    hanging from a ledge. An attackerId of -2 means the player is rotting.
     */
 
     static char attackTypes[4][] = {"m_pounceAttacker", "m_tongueOwner", "m_pummelAttacker", "m_jockeyAttacker"};
@@ -70,9 +118,11 @@ stock L4D2_RunScript(const String:sCode[], any:...)
 {
 	static iScriptLogic = INVALID_ENT_REFERENCE;
 	if(iScriptLogic == INVALID_ENT_REFERENCE || !IsValidEntity(iScriptLogic)) {
-		iScriptLogic = EntIndexToEntRef(CreateEntityByNameCheat("logic_script"));
+		iScriptLogic = EntIndexToEntRef(CreateEntityByName("logic_script"));
 		if(iScriptLogic == INVALID_ENT_REFERENCE || !IsValidEntity(iScriptLogic))
+		{
 			SetFailState("Could not create 'logic_script'");
+        }
 
 		DispatchSpawn(iScriptLogic);
 	}
@@ -85,20 +135,15 @@ stock L4D2_RunScript(const String:sCode[], any:...)
 }
 
 // use this to stagger survivor/infected (vector stagger away from origin)
-stock L4D2_Stagger(iClient, Float:fPos[3])
+stock L4D2_Stagger(iClient, Float:fPos[3]=NULL_VECTOR)
 {
-
 	L4D2_RunScript("GetPlayerFromUserID(%d).Stagger(Vector(%d,%d,%d))", GetClientUserId(iClient), RoundFloat(fPos[0]), RoundFloat(fPos[1]), RoundFloat(fPos[2]));
 }
 
-static ShowProgressBar(iClient, const Float:fStartTime, const Float:fDuration, const String:sBarTxt[], any:...)
+static ShowProgressBar(iClient, const Float:fStartTime, const Float:fDuration)
 {
-	static String:sBuffer[64];
-	VFormat(sBuffer, sizeof(sBuffer), sBarTxt, 4);
-
 	SetEntPropFloat(iClient, Prop_Send, "m_flProgressBarStartTime", fStartTime);
 	SetEntPropFloat(iClient, Prop_Send, "m_flProgressBarDuration", fDuration);
-	SetEntPropString(iClient, Prop_Send, "m_progressBarText", sBuffer);
 }
 
 static ReviveClient(iClient)
@@ -156,3 +201,5 @@ static L4D_SetPlayerTempHealth(iClient, iTempHealth)
     SetEntPropFloat(iClient, Prop_Send, "m_healthBuffer", float(iTempHealth));
     SetEntPropFloat(iClient, Prop_Send, "m_healthBufferTime", GetGameTime());
 }
+
+
