@@ -158,7 +158,9 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 
             if (gameTime - duration >= strugglers[client]) {
                 if (attackerId > 0) {
-                    L4D2_Stagger(attackerId);
+                	static Float:fPos[3];
+                	GetClientAbsOrigin(client, fPos);
+                    L4D2_Stagger(attackerId, 2.0, fPos);
                     //ResetAbility(attackerId);
                 }
 
@@ -246,12 +248,14 @@ stock L4D2_RunScript(const String:sCode[], any:...)
 }
 
 // use this to stagger survivor/infected (vector stagger away from origin)
-stock L4D2_Stagger(iClient, Float:fPos[3]=NULL_VECTOR, bool:bResetStagger=false)
+stock L4D2_Stagger(iClient, const Float:fStaggerTime=-1.0, const Float:fPos[3]=NULL_VECTOR)
 {
 	L4D2_RunScript("GetPlayerFromUserID(%d).Stagger(Vector(%d,%d,%d))", GetClientUserId(iClient), RoundFloat(fPos[0]), RoundFloat(fPos[1]), RoundFloat(fPos[2]));
 
-	if(bResetStagger)
-		SetEntPropFloat(iClient, Prop_Send, "m_staggerTimer", 0.0, 1);
+	if(fStaggerTime < 0)
+		return;
+	
+	SetEntPropFloat(iClient, Prop_Send, "m_staggerTimer", fStaggerTime, 1);
 }
 
 /*
