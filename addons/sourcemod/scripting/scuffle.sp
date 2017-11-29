@@ -19,17 +19,31 @@ char g_requires[1024];
 ConVar g_cvRequires;
 char g_requirements[32][32];  // pills, shot, kit?
 
+int g_notified[MAXPLAYERS + 1];  // Is user notified of the ability to get up?
 int g_payments[MAXPLAYERS + 1];  // player pays off requirements here
+
+float g_healthReviveBit;
+int g_strike[MAXPLAYERS + 1];
+int g_health[MAXPLAYERS + 1];
+float g_healthBuffer[MAXPLAYERS + 1];
+float g_healthRecord[MAXPLAYERS + 1];
+int g_maxRevives;
+float g_decayRate;
+float g_cvCooldown;
 
 public Plugin myinfo= {
     name = PLUGIN_NAME,
     author = "Lux & Victor \"NgBUCKWANGS\" Gonzalez",
-    description = "",
+    description = "Scuffle Back Into the Fight",
     version = PLUGIN_VERSION,
-    url = ""
+    url = "https://github.com/LuxLuma/Scuffle"
 }
 
 public void OnMapStart() {
+    ResetArrays();
+}
+
+void ResetArrays() {
     for (int i = 1; i <= MaxClients; i++) {
         g_limits[i] = g_limit;
         g_payments[i] = 0;
@@ -41,9 +55,62 @@ bool IsEntityValid(int ent) {
 }
 
 public void OnPluginStart() {
+    HookEvent("round_start", RoundStartHook);
+    HookEvent("heal_success", HealSuccessHook);
+    HookEvent("player_death", PlayerDeathHook);
+    HookEvent("bot_player_replace", BotPlayerReplaceHook);
+
+    g_decayRate = GetConVarFloat(FindConVar("pain_pills_decay_rate"));
+    g_healthReviveBit = GetConVarFloat(FindConVar("survivor_revive_health"));
+    g_maxRevives = GetConVarInt(FindConVar("survivor_max_incapacitated_count"));
     SetupCvar(g_cvLimit, "scuffle_limit", "-1", "-1: Infinitely, >0: Is a hard limit");
     SetupCvar(g_cvRequires, "scuffle_requires", "", "Semicolon separated values of inv slots 4 & 5");
     AutoExecConfig(true, "scuffle");
+}
+
+public void RoundStartHook(Handle event, const char[] name, bool dontBroadcast) {
+    ResetArrays();
+}
+
+public void HealSuccessHook(Handle event, const char[] name, bool dontBroadcast) {
+    SetRevive(GetClientOfUserId(GetEventInt(event, "subject")), 0);
+}
+
+public void PlayerDeathHook(Handle event, const char[] name, bool dontBroadcast) {
+    SetRevive(GetClientOfUserId(GetEventInt(event, "userid")), 0);
+}
+
+public void BotPlayerReplaceHook(Handle event, const char[] name, bool dontBroadcast) {
+    int bot = GetClientOfUserId(GetEventInt(event, "bot"));
+    int player = GetClientOfUserId(GetEventInt(event, "player"));
+    int revive = GetEntProp(bot, Prop_Send, "m_currentReviveCount");
+    SetRevive(player, revive);
+}
+
+void SetRevive(int client, int revives) {
+    if (client <= 0) {
+        return;
+    }
+
+    if (revives > g_maxRevives) {
+        revives = g_maxRevives;
+    }
+
+    if (IsClientConnected(client) && GetClientTeam(client) == 2) {
+        // https://forums.alliedmods.net/showpost.php?p=1583406&postcount=4
+        SetEntProp(client, Prop_Send, "m_currentReviveCount", revives);
+        g_strike[client] = revives;
+
+        if (revives == g_maxRevives) {
+            SetEntProp(client, Prop_Send, "m_bIsOnThirdStrike", 1, 1);
+            EmitSoundToClient(client, "player/heartbeatloop.wav");
+        }
+
+        else {
+            SetEntProp(client, Prop_Send, "m_bIsOnThirdStrike", 0, 1);
+            StopSound(client, SNDCHAN_AUTO, "player/heartbeatloop.wav");
+        }
+    }
 }
 
 void SetupCvar(Handle &cvHandle, char[] name, char[] value, char[] details) {
@@ -58,13 +125,11 @@ public void UpdateConVarsHook(Handle cvHandle, const char[] oldVal, const char[]
     Format(cvVal, sizeof(cvVal), "%s", newVal);
     SetConVarString(cvHandle, newVal);
 
-    if (newVal[0] == EOS) {
-        return;
-    }
-
     if (StrEqual(cvName, "scuffle_limit")) {
-        g_limit = GetConVarInt(cvHandle);
-        OnMapStart();  // will reset all player limits
+        if (newVal[0] != EOS) {
+            g_limit = GetConVarInt(cvHandle);
+            ResetArrays();  // will reset all player limits
+        }
     }
 
     else if (StrEqual(cvName, "scuffle_requires")) {
@@ -102,8 +167,24 @@ bool CanPlayerScuffle(int client) {
     static char item[32];
     static ent;
 
-    if (g_limits[client] == 0) {
+    int x = GetEntProp(client, Prop_Send, "m_currentReviveCount");
+    PrintToChatAll("client %N currentRevive %d of %d", client, x, g_maxRevives);
+
+    if (GetEntProp(client, Prop_Send, "m_currentReviveCount") == g_maxRevives) {
+        PrintToChat(client, "[scuffle] You're to weak. Call for rescue!!");
         return false;
+    }
+
+    if (g_limits[client] == 0) {
+        if (g_notified[client]++ == 0) {
+            PrintToChat(client, "[scuffle] 0 revivals left. Call for rescue!!", g_limits[client]);
+        }
+
+        return false;
+    }
+
+    if (g_notified[client]++ == 0 && g_limits[client] != 0) {
+        PrintToChat(client, "[scuffle] %d revivals left. Tap or hold JUMP key", g_limits[client]);
     }
 
     if (g_requirements[0][0] == EOS) {
@@ -125,10 +206,41 @@ bool CanPlayerScuffle(int client) {
     return false;
 }
 
+float GetClientHealthBuffer(int client, float defaultVal=0.0) {
+    // https://forums.alliedmods.net/showpost.php?p=1365630&postcount=1
+    static float healthBuffer, healthBufferTime, tempHealth;
+    healthBuffer = GetEntPropFloat(client, Prop_Send, "m_healthBuffer");
+    healthBufferTime = GetGameTime() - GetEntPropFloat(client, Prop_Send, "m_healthBufferTime");
+    tempHealth = healthBuffer - (healthBufferTime / (1.0 / g_decayRate));
+    return tempHealth < 0.0 ? defaultVal : tempHealth;
+}
+
+void RecordClientHealth(int client) {
+    g_health[client] = GetClientHealth(client);
+    g_healthBuffer[client] = GetClientHealthBuffer(client);
+    g_healthRecord[client] = GetGameTime();
+}
+
+void RestoreClientHealth(int client) {
+    g_healthBuffer[client] = GetClientHealthBuffer(client);
+
+    if (g_health[client] <= 0) {
+        g_health[client] = 1;
+        g_healthBuffer[client] = g_healthReviveBit;
+        //g_strike[client]++;  // GetEntProp(client, Prop_Send, "m_currentReviveCount");
+        g_strike[client] = GetEntProp(client, Prop_Send, "m_currentReviveCount") + 1;
+    }
+
+    Client_ExecuteCheat(client, "give", "health");
+    SetEntityHealth(client, g_health[client]);
+    SetEntPropFloat(client, Prop_Send, "m_healthBuffer", g_healthBuffer[client]);
+    SetRevive(client, g_strike[client]);
+}
+
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon) {
     static int lastKeyPress[MAXPLAYERS + 1];
     static float strugglers[MAXPLAYERS + 1];
-    static float duration = 1.0;
+    static float duration = 60.0;
     static float gameTime;
     static int attackerId;
     static int ent;
@@ -136,9 +248,30 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
     attackerId = 0;
     gameTime = GetGameTime();
 
-    if (IsClientConnected(client) && GetClientTeam(client) == 2 && !IsFakeClient(client)) {
-        if (IsPlayerInTrouble(client, attackerId) && CanPlayerScuffle(client)) {
-            if (!strugglers[client]) {
+    if (IsClientConnected(client) && GetClientTeam(client) == 2) {
+        if (!GetEntProp(client, Prop_Send, "m_isIncapacitated")) {
+            RecordClientHealth(client);
+        }
+
+        if (IsFakeClient(client)) {
+            return;
+        }
+
+        if (IsPlayerInTrouble(client, attackerId)) {
+            if (!CanPlayerScuffle(client)) {
+                return;
+            }
+
+            if (g_health[client] != 0) {
+                if (GetClientHealth(client) > g_health[client]) {
+                    if (attackerId > 0 || attackerId == -2) {
+                        g_healthBuffer[client] = g_healthReviveBit;
+                        g_health[client] = 0;
+                    }
+                }
+            }
+
+            if (strugglers[client] == 0.0) {
                 strugglers[client] = gameTime;
             }
 
@@ -150,7 +283,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
             }
 
             if (lastKeyPress[client] != IN_JUMP && buttons == IN_JUMP) {
-                strugglers[client] -= 1.9;
+                strugglers[client] -= 4.5;
             }
 
             ShowProgressBar(client, strugglers[client], duration);
@@ -158,16 +291,18 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 
             if (gameTime - duration >= strugglers[client]) {
                 if (attackerId > 0) {
-                    static Float:fPos[3];
-                    GetClientAbsOrigin(client, fPos);
-                    L4D2_Stagger(attackerId, true, fPos);
-                    //ResetAbility(attackerId);
+                    L4D2_Stagger(attackerId, true);
                 }
 
-                ReviveClient(client);
+                else if (attackerId == -1) {
+                    g_health[client] -= RoundToZero(gameTime - g_healthRecord[client]);
+                }
+
+                RestoreClientHealth(client);
 
                 if (g_limits[client] > 0) {
-                    g_limits[client]--;
+                    //g_limits[client]--;
+                    PrintToChat(client, "[scuffle] %d revivals left", --g_limits[client]);
                 }
 
                 ent = g_payments[client];
@@ -181,6 +316,11 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
         }
 
         else {
+            if (strugglers[client] > 0.0) {
+                ShowProgressBar(client, 0.1, 0.1);
+            }
+
+            g_notified[client] = 0;
             strugglers[client] = 0.0;
             lastKeyPress[client] = 0;
             g_payments[client] = 0;
@@ -270,20 +410,27 @@ static ShowProgressBar(iClient, const Float:fStartTime, const Float:fDuration)
 /*
 Simple revive func just feed it client index and will get 50 temp hp
 */
-static ReviveClient(iClient)
-{
-    static iIncapCount;
-    iIncapCount = GetEntProp(iClient, Prop_Send, "m_currentReviveCount") + 1;
-
-    Client_ExecuteCheat(iClient, "give", "health");
-    SetEntityHealth(iClient, 1);
-    SetEntProp(iClient, Prop_Send, "m_currentReviveCount", iIncapCount);
-
-    L4D_SetPlayerTempHealth(iClient, GetSurvivorReviveHealth());
-
-    if(GetMaxReviveCount() <= GetEntProp(iClient, Prop_Send, "m_currentReviveCount"))
-        SetEntProp(iClient, Prop_Send, "m_bIsOnThirdStrike", 1, 1);
-}
+// static ReviveClient(iClient)
+// {
+//     static iIncapCount;
+//     iIncapCount = GetEntProp(iClient, Prop_Send, "m_currentReviveCount") + 1;
+//
+//     while (g_health[iClient] > 100) {
+//         g_health[iClient] -= 100;
+//     }
+//
+//     Client_ExecuteCheat(iClient, "give", "health");
+//     SetEntityHealth(iClient, g_health[iClient]);
+//
+//     PrintToServer(" --- %d %f", g_health[iClient], g_healthBuffer[iClient]);
+//
+//     SetEntProp(iClient, Prop_Send, "m_currentReviveCount", iIncapCount);
+//
+//     L4D_SetPlayerTempHealth(iClient, g_healthBuffer[iClient]);
+//
+//     if(GetMaxReviveCount() <= GetEntProp(iClient, Prop_Send, "m_currentReviveCount"))
+//         SetEntProp(iClient, Prop_Send, "m_bIsOnThirdStrike", 1, 1);
+// }
 
 static Client_ExecuteCheat(iClient, const String:sCmd[], const String:sArgs[])
 {
@@ -293,37 +440,37 @@ static Client_ExecuteCheat(iClient, const String:sCmd[], const String:sArgs[])
     SetCommandFlags(sCmd, flags | FCVAR_CHEAT);
 }
 
-static GetSurvivorReviveHealth()
-{
-    static Handle:hSurvivorReviveHealth = INVALID_HANDLE;
-    if (hSurvivorReviveHealth == INVALID_HANDLE) {
-        hSurvivorReviveHealth = FindConVar("survivor_revive_health");
-        if (hSurvivorReviveHealth == INVALID_HANDLE) {
-            SetFailState("'survivor_revive_health' Cvar not found!");
-        }
-    }
+// static GetSurvivorReviveHealth()
+// {
+//     static Handle:hSurvivorReviveHealth = INVALID_HANDLE;
+//     if (hSurvivorReviveHealth == INVALID_HANDLE) {
+//         hSurvivorReviveHealth = FindConVar("survivor_revive_health");
+//         if (hSurvivorReviveHealth == INVALID_HANDLE) {
+//             SetFailState("'survivor_revive_health' Cvar not found!");
+//         }
+//     }
+//
+//     return GetConVarInt(hSurvivorReviveHealth);
+// }
 
-    return GetConVarInt(hSurvivorReviveHealth);
-}
-
-static GetMaxReviveCount()
-{
-    static Handle:hMaxReviveCount = INVALID_HANDLE;
-    if (hMaxReviveCount == INVALID_HANDLE) {
-        hMaxReviveCount = FindConVar("survivor_max_incapacitated_count");
-        if (hMaxReviveCount == INVALID_HANDLE) {
-            SetFailState("'survivor_max_incapacitated_count' Cvar not found!");
-        }
-    }
-
-    return GetConVarInt(hMaxReviveCount);
-}
-
-//l4d_stocks include
-static L4D_SetPlayerTempHealth(iClient, iTempHealth)
-{
-    SetEntPropFloat(iClient, Prop_Send, "m_healthBuffer", float(iTempHealth));
-    SetEntPropFloat(iClient, Prop_Send, "m_healthBufferTime", GetGameTime());
-}
+// static GetMaxReviveCount()
+// {
+//     static Handle:hMaxReviveCount = INVALID_HANDLE;
+//     if (hMaxReviveCount == INVALID_HANDLE) {
+//         hMaxReviveCount = FindConVar("survivor_max_incapacitated_count");
+//         if (hMaxReviveCount == INVALID_HANDLE) {
+//             SetFailState("'survivor_max_incapacitated_count' Cvar not found!");
+//         }
+//     }
+//
+//     return GetConVarInt(hMaxReviveCount);
+// }
+//
+// //l4d_stocks include
+// static L4D_SetPlayerTempHealth(iClient, float iTempHealth)
+// {
+//     SetEntPropFloat(iClient, Prop_Send, "m_healthBuffer", iTempHealth);
+//     SetEntPropFloat(iClient, Prop_Send, "m_healthBufferTime", GetGameTime());
+// }
 
 
