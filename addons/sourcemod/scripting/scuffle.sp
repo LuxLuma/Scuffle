@@ -628,3 +628,31 @@ static Client_ExecuteCheat(iClient, const String:sCmd[], const String:sArgs[])
 // }
 
 
+stock DisplayDirectorHint(iClient, String:sHintTxt[32], iHintTimeout, String:sIcon[]="icon_Tip", String:sBind[]="+jump", String:sHintColorRGB[]="255 0 100")
+{
+	static iEntity;
+	iEntity = CreateEntityByName("env_instructor_hint");
+	
+	static String:sValues[64];
+	
+	FormatEx(sValues, sizeof(sValues), "hint%d", iClient);
+	DispatchKeyValue(iClient, "targetname", sValues);
+	DispatchKeyValue(iEntity, "hint_target", sValues);
+	
+	Format(sValues, sizeof(sValues), "%d", iHintTimeout);
+	DispatchKeyValue(iEntity, "hint_timeout", sValues);
+	DispatchKeyValue(iEntity, "hint_range", "100");
+	Format(sValues, sizeof(sValues), "%s", sIcon);
+	DispatchKeyValue(iEntity, "hint_icon_onscreen", sValues);
+	DispatchKeyValue(iEntity, "hint_binding", sBind);
+	Format(sValues, sizeof(sValues), "%s", sHintTxt);
+	DispatchKeyValue(iEntity, "hint_caption", sHintTxt);
+	DispatchKeyValue(iEntity, "hint_color", sHintColorRGB);
+	DispatchSpawn(iEntity);
+	AcceptEntityInput(iEntity, "ShowHint", iClient);
+	
+	Format(sValues, sizeof(sValues), "OnUser1 !self:Kill::%d:1", iHintTimeout);
+	SetVariantString(sValues);
+	AcceptEntityInput(iEntity, "AddOutput");
+	AcceptEntityInput(iEntity, "FireUser1");
+}
