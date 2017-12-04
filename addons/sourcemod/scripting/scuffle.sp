@@ -3,7 +3,6 @@
 /*
  * license = "https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html#SEC1",
  * TODO:
- * - allow bonus health if (kit, shot, etc)
  * - add an option to strike a user for getting up (till maxRevives)
  */
 
@@ -12,13 +11,15 @@
 #include <sdktools>
 #include <sdkhooks>
 #define PLUGIN_NAME "Scuffle"
-#define PLUGIN_VERSION "0.0.4"
+#define PLUGIN_VERSION "0.0.5"
 
 ConVar g_cvTokens; int g_token;
 int g_tokens[MAXPLAYERS + 1];  // how many times can someone save themselves?
 
 ConVar g_cvRequires; char g_requires[1024];
 char g_requirements[32][32];  // pills, shot, kit?
+float g_itemHealth[MAXPLAYERS + 1];
+float g_itemHealthMap[32];
 
 int g_attackId[MAXPLAYERS + 1];
 int g_notified[MAXPLAYERS + 1];  // Is user notified of the ability to get up?
@@ -50,7 +51,6 @@ ConVar g_cvReviveTap; float g_reviveTapTime;
 ConVar g_cvReviveLoss; float g_reviveLossTime;
 ConVar g_cvReviveShiftBit; int g_reviveShiftBit;
 ConVar g_cvKillChance; int g_killChance;
-ConVar g_cvItemHealth; float g_itemHealth;
 
 public Plugin myinfo= {
     name = PLUGIN_NAME,
@@ -114,7 +114,6 @@ public void OnPluginStart() {
     SetupCvar(g_cvReviveLoss, "scuffle_losstime", "0.2", "Progress chip away at missed jumps");
     SetupCvar(g_cvReviveShiftBit, "scuffle_shiftbit", "1", "Shift bit for revival see https://sm.alliedmods.net/api/index.php?fastload=file&id=47&");
     SetupCvar(g_cvKillChance, "scuffle_killchance", "0", "Chance of killing an SI when reviving");
-    SetupCvar(g_cvItemHealth, "scuffle_itemhealth", "0.0", "Added to health buffer");
     AutoExecConfig(true, "scuffle");
 }
 
@@ -178,16 +177,33 @@ public void UpdateConVarsHook(Handle cvHandle, const char[] oldVal, const char[]
     }
 
     else if (StrEqual(cvName, "scuffle_requires")) {
-        // clean up the previous g_requirements array
+
+        // clean up the previous item arrays
         for (int i = 0; i < sizeof(g_requirements[]); i++) {
-            switch (g_requirements[i][0] != EOS) {
-                case 1: g_requirements[i] = "";
-                case 0: break;
-            }
+            g_itemHealthMap[i] = 0.0;
+            g_requirements[i] = "";
         }
 
         GetConVarString(cvHandle, g_requires, sizeof(g_requires));
         ExplodeString(cvVal, ";", g_requirements, 32, sizeof(g_requirements[]));
+
+        static char reqs[32][32];
+        if (g_requirements[0][0] == EOS) {
+            return;
+        }
+
+        for (int i = 0; i < sizeof(g_requirements[]); i++) {
+            ExplodeString(g_requirements[i], "=", reqs, 32, sizeof(reqs[]));
+
+            switch (g_requirements[i][0] == EOS) {
+                case 1: break;
+                case 0: {
+                    g_requirements[i] = reqs[0];
+                    g_itemHealthMap[i] = StringToFloat(reqs[1]);
+                    reqs[1] = "0.0";
+                }
+            }
+        }
     }
 
     else if (StrEqual(cvName, "scuffle_cooldown")) {
@@ -247,13 +263,9 @@ public void UpdateConVarsHook(Handle cvHandle, const char[] oldVal, const char[]
         SetConVarBounds(cvHandle, ConVarBound_Upper, true, 100.0);
         g_killChance = GetConVarInt(cvHandle);
     }
-
-    else if (StrEqual(cvName, "scuffle_itemhealth")) {
-        g_itemHealth = GetConVarFloat(cvHandle);
-    }
 }
 
-bool HasRequirement(const char item[32]) {
+bool HasRequirement(int client, const char item[32]) {
     for (int i = 0; i < sizeof(g_requirements[]); i++) {
         if (g_requirements[i][0] == EOS) {
             switch (i == 0) {
@@ -263,6 +275,11 @@ bool HasRequirement(const char item[32]) {
         }
 
         if (StrContains(item, g_requirements[i]) >= 0) {
+            if (g_itemHealthMap[i]) {
+                g_itemHealth[client] = g_itemHealthMap[i];
+            }
+
+            //g_itemHealth[client] = g_healthReviveBit + g_itemHealthMap[i];
             return true;
         }
     }
@@ -340,14 +357,14 @@ bool CanPlayerScuffle(int client) {
 
         else {
             static char item[32];
-            static ent;
+            static int ent;
 
             for (int i = 4; i >= 3; i--) {  // check pills, then kits, etc
                 ent = GetPlayerWeaponSlot(client, i);
 
                 if (IsEntityValid(ent)) {
                     GetEntityClassname(ent, item, sizeof(item));
-                    if (HasRequirement(item)) {
+                    if (HasRequirement(client, item)) {
                         g_payments[client] = ent;
                         status[client] = 2;
                         break;
@@ -492,10 +509,9 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
                     RemovePlayerItem(client, ent);
                     AcceptEntityInput(ent,"kill");
 
-                    if (g_itemHealth > 0.0) {
-                        static float extraBuffer;
-                        extraBuffer = g_healthBuffer[client] + g_itemHealth;
-                        L4D_SetPlayerTempHealth(client, extraBuffer);
+                    if (g_itemHealth[client] > 0.0) {
+                        L4D_SetPlayerTempHealth(client, g_itemHealth[client]);
+                        g_itemHealth[client] = 0.0;
                     }
                 }
 
