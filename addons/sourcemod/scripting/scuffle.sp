@@ -95,7 +95,7 @@ public void OnPluginStart() {
     HookEvent("round_start", RoundStartHook);
     HookEvent("heal_success", HealSuccessHook);
     HookEvent("player_death", PlayerDeathHook);
-    HookEvent("bot_player_replace", BotPlayerReplaceHook);
+    HookEvent("bot_player_replace", BotPlayerReplaceHook, EventHookMode_Pre);
 
     g_decayRate = GetConVarFloat(FindConVar("pain_pills_decay_rate"));
     g_healthReviveBit = GetConVarFloat(FindConVar("survivor_revive_health"));
@@ -130,29 +130,28 @@ public void PlayerDeathHook(Handle event, const char[] name, bool dontBroadcast)
 }
 
 public void BotPlayerReplaceHook(Handle event, const char[] name, bool dontBroadcast) {
-    int bot = GetClientOfUserId(GetEventInt(event, "bot"));
-    int player = GetClientOfUserId(GetEventInt(event, "player"));
-    int revive = GetEntProp(bot, Prop_Send, "m_currentReviveCount");
-    SetRevive(player, revive);
+    int target = GetClientOfUserId(GetEventInt(event, "bot"));
+    int client = GetClientOfUserId(GetEventInt(event, "player"));
+    SetRevive(client, GetEntProp(target, Prop_Send, "m_currentReviveCount"));
 }
 
-void SetRevive(int client, int revives) {
+void SetRevive(int client, int count) {
     if (client <= 0) {
         return;
     }
 
+    // https://forums.alliedmods.net/showpost.php?p=1583406&postcount=4
     if (IsClientConnected(client) && GetClientTeam(client) == 2) {
-        // https://forums.alliedmods.net/showpost.php?p=1583406&postcount=4
-        SetEntProp(client, Prop_Send, "m_currentReviveCount", revives);
+        if (!IsFakeClient(client)) {
+            bool isMaxed = count >= g_maxRevives;
 
-        if (revives == g_maxRevives) {
-            SetEntProp(client, Prop_Send, "m_bIsOnThirdStrike", 1, 1);
-            EmitSoundToClient(client, "player/heartbeatloop.wav");
-        }
+            switch (isMaxed && !GetEntProp(client, Prop_Send, "m_bIsOnThirdStrike", 1)) {
+                case 1: EmitSoundToClient(client, "player/heartbeatloop.wav");
+                case 0: StopSound(client, SNDCHAN_AUTO, "player/heartbeatloop.wav");
+            }
 
-        else {
-            SetEntProp(client, Prop_Send, "m_bIsOnThirdStrike", 0, 1);
-            StopSound(client, SNDCHAN_AUTO, "player/heartbeatloop.wav");
+            SetEntProp(client, Prop_Send, "m_currentReviveCount", count);
+            SetEntProp(client, Prop_Send, "m_bIsOnThirdStrike", isMaxed, 1);
         }
     }
 }
