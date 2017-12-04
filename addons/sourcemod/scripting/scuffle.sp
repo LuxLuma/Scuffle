@@ -4,6 +4,7 @@
  * license = "https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html#SEC1",
  * TODO:
  * - allow bonus health if (kit, shot, etc)
+ * - add an option to strike a user for getting up (till maxRevives)
  */
 
 #pragma semicolon 1
@@ -48,6 +49,8 @@ ConVar g_cvReviveHold; float g_reviveHoldTime;
 ConVar g_cvReviveTap; float g_reviveTapTime;
 ConVar g_cvReviveLoss; float g_reviveLossTime;
 ConVar g_cvReviveShiftBit; int g_reviveShiftBit;
+ConVar g_cvKillChance; int g_killChance;
+ConVar g_cvItemHealth; float g_itemHealth;
 
 public Plugin myinfo= {
     name = PLUGIN_NAME,
@@ -110,6 +113,8 @@ public void OnPluginStart() {
     SetupCvar(g_cvReviveTap, "scuffle_taptime", "1.5", "Chip away at duration when tapping jump");
     SetupCvar(g_cvReviveLoss, "scuffle_losstime", "0.2", "Progress chip away at missed jumps");
     SetupCvar(g_cvReviveShiftBit, "scuffle_shiftbit", "1", "Shift bit for revival see https://sm.alliedmods.net/api/index.php?fastload=file&id=47&");
+    SetupCvar(g_cvKillChance, "scuffle_killchance", "0", "Chance of killing an SI when reviving");
+    SetupCvar(g_cvItemHealth, "scuffle_itemhealth", "0.0", "Added to health buffer");
     AutoExecConfig(true, "scuffle");
 }
 
@@ -236,6 +241,16 @@ public void UpdateConVarsHook(Handle cvHandle, const char[] oldVal, const char[]
     else if (StrEqual(cvName, "scuffle_shiftbit")) {
         g_reviveShiftBit = 1 << GetConVarInt(cvHandle);
     }
+
+    else if (StrEqual(cvName, "scuffle_killchance")) {
+        SetConVarBounds(cvHandle, ConVarBound_Lower, true, 0.0);
+        SetConVarBounds(cvHandle, ConVarBound_Upper, true, 100.0);
+        g_killChance = GetConVarInt(cvHandle);
+    }
+
+    else if (StrEqual(cvName, "scuffle_itemhealth")) {
+        g_itemHealth = GetConVarFloat(cvHandle);
+    }
 }
 
 bool HasRequirement(const char item[32]) {
@@ -339,14 +354,20 @@ bool CanPlayerScuffle(int client) {
                     }
                 }
             }
+
+            if (status[client] == 0) {
+                notice = "Requirements missing e.g., pills, adrenaline";
+                status[client] = -8;
+            }
         }
     }
 
     if (status[client] > 0) {
-        notice = "Tap or hold JUMP key";
+        notice = "Tap or hold JUMP key to self-revive!";
     }
 
-    PrintToChat(client, "%d [scuffle] %s", g_scuffling[client], notice);
+    Format(notice, sizeof(notice), "[scuffle] %s", notice);
+    DisplayDirectorHint(client, notice, 5);
     return status[client] > 0;
 }
 
@@ -379,7 +400,7 @@ void RestoreClientHealth(int client) {
 
     Client_ExecuteCheat(client, "give", "health");
     SetEntityHealth(client, g_health[client]);
-    SetEntPropFloat(client, Prop_Send, "m_healthBuffer", g_healthBuffer[client]);
+    L4D_SetPlayerTempHealth(client, g_healthBuffer[client]);
     SetRevive(client, strike);
 }
 
@@ -453,6 +474,10 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
             if (gameTime - g_reviveDuration >= g_lastScuffle[client]) {
                 if (attackerId > 0) {
                     L4D2_Stagger(attackerId, true);
+
+                    if (GetRandomInt(1, 100) <= g_killChance) {
+                        ForcePlayerSuicide(attackerId);
+                    }
                 }
 
                 RestoreClientHealth(client);
@@ -466,6 +491,12 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
                 if (IsEntityValid(ent)) {
                     RemovePlayerItem(client, ent);
                     AcceptEntityInput(ent,"kill");
+
+                    if (g_itemHealth > 0.0) {
+                        static float extraBuffer;
+                        extraBuffer = g_healthBuffer[client] + g_itemHealth;
+                        L4D_SetPlayerTempHealth(client, extraBuffer);
+                    }
                 }
 
                 // and penalize ...
@@ -489,6 +520,10 @@ bool IsPlayerInTrouble(int client, int &attackerId) {
     ID of the SI attacking the player. An attackerId of -1 means the player is
     hanging from a ledge. An attackerId of -2 means the player is rotting.
     */
+
+//     if (g_attackId[client] != 0) {
+//         return true;
+//     }
 
     static char attackTypes[4][] = {"m_pounceAttacker", "m_tongueOwner", "m_pummelAttacker", "m_jockeyAttacker"};
 
@@ -620,25 +655,25 @@ static Client_ExecuteCheat(iClient, const String:sCmd[], const String:sArgs[])
 //     return GetConVarInt(hMaxReviveCount);
 // }
 //
-// //l4d_stocks include
-// static L4D_SetPlayerTempHealth(iClient, float iTempHealth)
-// {
-//     SetEntPropFloat(iClient, Prop_Send, "m_healthBuffer", iTempHealth);
-//     SetEntPropFloat(iClient, Prop_Send, "m_healthBufferTime", GetGameTime());
-// }
+//l4d_stocks include
+static L4D_SetPlayerTempHealth(iClient, float iTempHealth)
+{
+    SetEntPropFloat(iClient, Prop_Send, "m_healthBuffer", iTempHealth);
+    SetEntPropFloat(iClient, Prop_Send, "m_healthBufferTime", GetGameTime());
+}
 
 
-stock DisplayDirectorHint(iClient, String:sHintTxt[32], iHintTimeout, String:sIcon[]="icon_Tip", String:sBind[]="+jump", String:sHintColorRGB[]="255 0 100")
+stock DisplayDirectorHint(iClient, String:sHintTxt[128], iHintTimeout, String:sIcon[]="icon_Tip", String:sBind[]="+jump", String:sHintColorRGB[]="255 0 100")
 {
 	static iEntity;
 	iEntity = CreateEntityByName("env_instructor_hint");
-	
+
 	static String:sValues[64];
-	
+
 	FormatEx(sValues, sizeof(sValues), "hint%d", iClient);
 	DispatchKeyValue(iClient, "targetname", sValues);
 	DispatchKeyValue(iEntity, "hint_target", sValues);
-	
+
 	Format(sValues, sizeof(sValues), "%d", iHintTimeout);
 	DispatchKeyValue(iEntity, "hint_timeout", sValues);
 	DispatchKeyValue(iEntity, "hint_range", "100");
@@ -650,7 +685,7 @@ stock DisplayDirectorHint(iClient, String:sHintTxt[32], iHintTimeout, String:sIc
 	DispatchKeyValue(iEntity, "hint_color", sHintColorRGB);
 	DispatchSpawn(iEntity);
 	AcceptEntityInput(iEntity, "ShowHint", iClient);
-	
+
 	Format(sValues, sizeof(sValues), "OnUser1 !self:Kill::%d:1", iHintTimeout);
 	SetVariantString(sValues);
 	AcceptEntityInput(iEntity, "AddOutput");
