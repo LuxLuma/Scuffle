@@ -1,10 +1,10 @@
 //# vim: set filetype=cpp :
 
 /*
- * license = "https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html#SEC1",
- * TODO:
- * - add an option to strike a user for getting up (till maxRevives)
- */
+* license = "https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html#SEC1",
+* TODO:
+* - add an option to strike a user for getting up (till maxRevives)
+*/
 
 #pragma semicolon 1
 #include <sourcemod>
@@ -80,7 +80,7 @@ void ResetClient(int client, bool hardReset=false) {
     g_payments[client] = 0;
     g_attackId[client] = 0;
     g_notified[client] = 0;
-
+    
     if (hardReset) {
         g_tokens[client] = g_token;
         g_cooldowns[client] = 0.0;
@@ -96,7 +96,7 @@ public void OnPluginStart() {
     HookEvent("heal_success", HealSuccessHook);
     HookEvent("player_death", PlayerDeathHook);
     HookEvent("bot_player_replace", BotPlayerReplaceHook, EventHookMode_Pre);
-
+    
     g_decayRate = GetConVarFloat(FindConVar("pain_pills_decay_rate"));
     g_healthReviveBit = GetConVarFloat(FindConVar("survivor_revive_health"));
     g_maxRevives = GetConVarInt(FindConVar("survivor_max_incapacitated_count"));
@@ -139,17 +139,17 @@ void SetRevive(int client, int count) {
     if (client <= 0) {
         return;
     }
-
+    
     // https://forums.alliedmods.net/showpost.php?p=1583406&postcount=4
     if (IsClientConnected(client) && GetClientTeam(client) == 2) {
         if (!IsFakeClient(client)) {
             bool isMaxed = count >= g_maxRevives;
-
+            
             switch (isMaxed && !GetEntProp(client, Prop_Send, "m_bIsOnThirdStrike", 1)) {
                 case 1: EmitSoundToClient(client, "player/heartbeatloop.wav");
                 case 0: StopSound(client, SNDCHAN_AUTO, "player/heartbeatloop.wav");
             }
-
+            
             SetEntProp(client, Prop_Send, "m_currentReviveCount", count);
             SetEntProp(client, Prop_Send, "m_bIsOnThirdStrike", isMaxed, 1);
         }
@@ -167,33 +167,33 @@ public void UpdateConVarsHook(Handle cvHandle, const char[] oldVal, const char[]
     GetConVarName(cvHandle, cvName, sizeof(cvName));
     Format(cvVal, sizeof(cvVal), "%s", newVal);
     SetConVarString(cvHandle, newVal);
-
+    
     if (StrEqual(cvName, "scuffle_tokens")) {
         if (newVal[0] != EOS) {
             g_token = GetConVarInt(cvHandle);
             ResetAllClients();
         }
     }
-
+    
     else if (StrEqual(cvName, "scuffle_requires")) {
-
+        
         // clean up the previous item arrays
         for (int i = 0; i < sizeof(g_requirements[]); i++) {
             g_itemHealthMap[i] = 0.0;
             g_requirements[i] = "";
         }
-
+        
         GetConVarString(cvHandle, g_requires, sizeof(g_requires));
         ExplodeString(cvVal, ";", g_requirements, 32, sizeof(g_requirements[]));
-
+        
         static char reqs[32][32];
         if (g_requirements[0][0] == EOS) {
             return;
         }
-
+        
         for (int i = 0; i < sizeof(g_requirements[]); i++) {
             ExplodeString(g_requirements[i], "=", reqs, 32, sizeof(reqs[]));
-
+            
             switch (g_requirements[i][0] == EOS) {
                 case 1: break;
                 case 0: {
@@ -204,59 +204,59 @@ public void UpdateConVarsHook(Handle cvHandle, const char[] oldVal, const char[]
             }
         }
     }
-
+    
     else if (StrEqual(cvName, "scuffle_cooldown")) {
         g_cooldown = GetConVarFloat(cvHandle);
     }
-
+    
     else if (StrEqual(cvName, "scuffle_lastleg")) {
         SetConVarBounds(cvHandle, ConVarBound_Lower, true, -1.0);
         SetConVarBounds(cvHandle, ConVarBound_Upper, true, float(g_maxRevives));
         g_lastLeg = GetConVarInt(cvHandle);
     }
-
+    
     else if (StrEqual(cvName, "scuffle_minhealth")) {
         g_minHealth = GetConVarInt(cvHandle);
     }
-
+    
     else if (StrEqual(cvName, "scuffle_attack")) {
         g_canScuffleFromAttack = GetConVarBool(cvHandle);
     }
-
+    
     else if (StrEqual(cvName, "scuffle_ledge")) {
         g_canScuffleFromLedge = GetConVarBool(cvHandle);
     }
-
+    
     else if (StrEqual(cvName, "scuffle_ground")) {
         g_canScuffleFromGround = GetConVarBool(cvHandle);
     }
-
+    
     else if (StrEqual(cvName, "scuffle_duration")) {
         g_reviveDuration = GetConVarFloat(cvHandle);
     }
-
+    
     else if (StrEqual(cvName, "scuffle_holdtime")) {
         g_reviveHoldTime = GetConVarFloat(cvHandle);
         if (g_reviveHoldTime >= g_reviveDuration) {
             g_reviveHoldTime += g_reviveLossTime;
         }
     }
-
+    
     else if (StrEqual(cvName, "scuffle_taptime")) {
         g_reviveTapTime = GetConVarFloat(cvHandle);
         if (g_reviveTapTime >= g_reviveDuration) {
             g_reviveTapTime += g_reviveLossTime;
         }
     }
-
+    
     else if (StrEqual(cvName, "scuffle_losstime")) {
         g_reviveLossTime = GetConVarFloat(cvHandle);
     }
-
+    
     else if (StrEqual(cvName, "scuffle_shiftbit")) {
         g_reviveShiftBit = 1 << GetConVarInt(cvHandle);
     }
-
+    
     else if (StrEqual(cvName, "scuffle_killchance")) {
         SetConVarBounds(cvHandle, ConVarBound_Lower, true, 0.0);
         SetConVarBounds(cvHandle, ConVarBound_Upper, true, 100.0);
@@ -272,58 +272,58 @@ bool HasRequirement(int client, const char item[32]) {
                 case 0: return false;
             }
         }
-
+        
         if (StrContains(item, g_requirements[i]) >= 0) {
             if (g_itemHealthMap[i]) {
                 g_itemHealth[client] = g_itemHealthMap[i];
             }
-
+            
             //g_itemHealth[client] = g_healthReviveBit + g_itemHealthMap[i];
             return true;
         }
     }
-
+    
     return false;
 }
 
 bool CanPlayerScuffle(int client) {
-
+    
     static char notice[128];
     static int status[MAXPLAYERS + 1];
     static int attack[MAXPLAYERS + 1];
-
+    
     if (g_scuffling[client]) {
         if (attack[client] == g_attackId[client]) {
             if (status[client] != -3) {
                 return status[client] > 0;
             }
-
+            
             else if (g_cooldowns[client] > GetGameTime()) {
                 return false;
             }
         }
     }
-
+    
     notice = "";
     status[client] = 0;
     attack[client] = g_attackId[client];
     g_scuffling[client] = 1;
-
+    
     if (g_cooldowns[client] > GetGameTime()) {
         notice = "Cooling down. Call for rescue!!";
         status[client] = -3;
     }
-
+    
     if (g_tokens[client] == 0) {
         notice = "Out of tokens. Call for rescue!!";
         status[client] = -1;
     }
-
+    
     if (GetEntProp(client, Prop_Send, "m_currentReviveCount") >= g_lastLeg) {
         notice = "Out of revives. Call for rescue!!";
         status[client] = -2;
     }
-
+    
     // this checks against ledges and SI *not* ground incaps
     if (!GetEntProp(client, Prop_Send, "m_isIncapacitated")) {
         if (g_health[client] + GetClientHealthBuffer(client) <= float(g_minHealth)) {
@@ -331,36 +331,36 @@ bool CanPlayerScuffle(int client) {
             status[client] = -4;
         }
     }
-
+    
     if (attack[client] != 0) {
         if (attack[client] == -1 && !g_canScuffleFromLedge) {
             notice = "Ledge scuffle disabled. Call for rescue!!";
             status[client] = -5;
         }
-
+        
         else if (attack[client] == -2 && !g_canScuffleFromGround) {
             notice = "Ground scuffle disabled. Call for rescue!!";
             status[client] = -6;
         }
-
+        
         else if (attack[client] > 0 && !g_canScuffleFromAttack) {
             notice = "Attack scuffle disabled. Call for rescue!!";
             status[client] = -7;
         }
     }
-
+    
     if (status[client] == 0) {
         if (g_requirements[0][0] == EOS) {
             status[client] = 1;
         }
-
+        
         else {
             static char item[32];
             static int ent;
-
+            
             for (int i = 4; i >= 3; i--) {  // check pills, then kits, etc
                 ent = GetPlayerWeaponSlot(client, i);
-
+                
                 if (IsEntityValid(ent)) {
                     GetEntityClassname(ent, item, sizeof(item));
                     if (HasRequirement(client, item)) {
@@ -370,18 +370,18 @@ bool CanPlayerScuffle(int client) {
                     }
                 }
             }
-
+            
             if (status[client] == 0) {
                 notice = "Requirements missing e.g., pills, adrenaline";
                 status[client] = -8;
             }
         }
     }
-
+    
     if (status[client] > 0) {
         notice = "Tap or hold JUMP key to self-revive!";
     }
-
+    
     Format(notice, sizeof(notice), "[scuffle] %s", notice);
     DisplayDirectorHint(client, notice, 5);
     return status[client] > 0;
@@ -404,16 +404,16 @@ void RecordClientHealth(int client) {
 
 void RestoreClientHealth(int client) {
     int strike = GetEntProp(client, Prop_Send, "m_currentReviveCount");
-
+    
     if (g_health[client] <= 0) {
         g_health[client] = 1;
-
+        
         if (g_healthBuffer[client] <= 0.0) {
             g_healthBuffer[client] = g_healthReviveBit;
             strike++;
         }
     }
-
+    
     Client_ExecuteCheat(client, "give", "health");
     SetEntityHealth(client, g_health[client]);
     L4D_SetPlayerTempHealth(client, g_healthBuffer[client]);
@@ -421,42 +421,42 @@ void RestoreClientHealth(int client) {
 }
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon) {
-
+    
     static float gameTime;
     static int attackerId;
     static int ent;
-
+    
     attackerId = 0;
     gameTime = GetGameTime();
-
+    
     if (IsClientConnected(client) && GetClientTeam(client) == 2) {
         if (!GetEntProp(client, Prop_Send, "m_isIncapacitated")) {
             RecordClientHealth(client);
         }
-
+        
         if (IsFakeClient(client)) {
             return;
         }
-
+        
         if (IsPlayerInTrouble(client, attackerId)) {
             g_cleanup[client] = 1;
-
+            
             if (!CanPlayerScuffle(client)) {
                 return;
             }
-
+            
             if (g_scuffleStart[client] == 0.0) {
                 g_scuffleStart[client] = gameTime;
                 g_secondsCheck[client] = gameTime;
                 g_lastScuffle[client] = gameTime;
             }
-
+            
             if (gameTime - g_secondsCheck[client] >= 1.0) {
                 g_secondsCheck[client] = gameTime;
-
+                
                 g_health[client]--;
                 g_healthBuffer[client] -= 1.0;
-
+                
                 if (GetEntProp(client, Prop_Send, "m_isIncapacitated")) {
                     if (attackerId != -1) {
                         g_healthBuffer[client] = 0.0;
@@ -464,61 +464,61 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
                     }
                 }
             }
-
+            
             // if autoreviving set g_reviveLossTime to < 0.0 e.g, -0.01
             if (g_reviveLossTime < 0.0) {
                 g_lastScuffle[client] += g_reviveLossTime * -1;
             }
-
+            
             static int reviving;
             reviving = (buttons == g_reviveShiftBit);
-
+            
             if (gameTime + g_reviveDuration - g_lastScuffle[client] > g_reviveDuration) {
                 switch (reviving) {
                     case 1: g_lastScuffle[client] -= g_reviveHoldTime;
                     case 0: g_lastScuffle[client] += g_reviveLossTime;
                 }
             }
-
+            
             if (g_lastKeyPress[client] != g_reviveShiftBit && reviving) {
                 g_lastScuffle[client] -= g_reviveTapTime;
             }
-
+            
             ShowProgressBar(client, g_lastScuffle[client], g_reviveDuration);
             g_lastKeyPress[client] = buttons;
-
+            
             if (gameTime - g_reviveDuration >= g_lastScuffle[client]) {
                 if (attackerId > 0) {
                     L4D2_Stagger(attackerId, true);
-
+                    
                     if (GetRandomInt(1, 100) <= g_killChance) {
                         ForcePlayerSuicide(attackerId);
                     }
                 }
-
+                
                 RestoreClientHealth(client);
                 g_cooldowns[client] = gameTime + g_cooldown;
                 ent = g_payments[client];
-
+                
                 if (g_tokens[client] > 0) {
                     g_tokens[client]--;
                 }
-
+                
                 if (IsEntityValid(ent)) {
                     RemovePlayerItem(client, ent);
                     AcceptEntityInput(ent,"kill");
-
+                    
                     // enter only if survivor is crippled
                     if (g_itemHealth[client] > 0.0 && g_health[client] == 1) {
                         L4D_SetPlayerTempHealth(client, g_itemHealth[client]);
                         g_itemHealth[client] = 0.0;
                     }
                 }
-
+                
                 // and penalize ...
             }
         }
-
+        
         else if (g_cleanup[client]) {
             ResetClient(client);
         }
@@ -530,19 +530,19 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 // }
 
 bool IsPlayerInTrouble(int client, int &attackerId) {
-
+    
     /* Check if player is being attacked and is immobilized. If the player is
     not being attacked, check if they're incapacitated. An attackerId > 0 is the
     ID of the SI attacking the player. An attackerId of -1 means the player is
     hanging from a ledge. An attackerId of -2 means the player is rotting.
     */
-
-//     if (g_attackId[client] != 0) {
-//         return true;
-//     }
-
+    
+    //     if (g_attackId[client] != 0) {
+    //         return true;
+    //     }
+    
     static char attackTypes[4][] = {"m_pounceAttacker", "m_tongueOwner", "m_pummelAttacker", "m_jockeyAttacker"};
-
+    
     for (int i = 0; i < sizeof(attackTypes); i++) {
         if (HasEntProp(client, Prop_Send, attackTypes[i])) {
             attackerId = GetEntPropEnt(client, Prop_Send, attackTypes[i]);
@@ -552,9 +552,9 @@ bool IsPlayerInTrouble(int client, int &attackerId) {
             }
         }
     }
-
+    
     static char incapTypes[2][] = {"m_isHangingFromLedge", "m_isIncapacitated"};
-
+    
     for (int i = 0; i < sizeof(incapTypes); i++) {
         if (HasEntProp(client, Prop_Send, incapTypes[i])) {
             if (GetEntProp(client, Prop_Send, incapTypes[i])) {
@@ -564,12 +564,12 @@ bool IsPlayerInTrouble(int client, int &attackerId) {
             }
         }
     }
-
+    
     g_attackId[client] = 0;
     if (g_scuffleStart[client]) {
         ShowProgressBar(client, 0.1, 0.0);
     }
-
+    
     return false;
 }
 
@@ -584,13 +584,13 @@ stock L4D2_RunScript(const String:sCode[], any:...)
         {
             SetFailState("Could not create 'logic_script'");
         }
-
+        
         DispatchSpawn(iScriptLogic);
     }
-
+    
     static String:sBuffer[512];
     VFormat(sBuffer, sizeof(sBuffer), sCode, 2);
-
+    
     SetVariantString(sBuffer);
     AcceptEntityInput(iScriptLogic, "RunScriptCode");
 }
@@ -599,15 +599,15 @@ stock L4D2_RunScript(const String:sCode[], any:...)
 stock L4D2_Stagger(iClient, bool:bResetStagger=false, Float:fPos[3]=NULL_VECTOR)
 {
     L4D2_RunScript("GetPlayerFromUserID(%d).Stagger(Vector(%d,%d,%d))", GetClientUserId(iClient), RoundFloat(fPos[0]), RoundFloat(fPos[1]), RoundFloat(fPos[2]));
-
+    
     if(bResetStagger)
         SetEntPropFloat(iClient, Prop_Send, "m_staggerTimer", 0.0, 1);
 }
 
 /*
-    iClient = client
-    fStartTime = GetGameTime() to start the bar at the time you want.
-    fDuration = GetGameTime() + 5 Progress bar will finish in 5secs
+iClient = client
+fStartTime = GetGameTime() to start the bar at the time you want.
+fDuration = GetGameTime() + 5 Progress bar will finish in 5secs
 */
 static ShowProgressBar(iClient, const Float:fStartTime, const Float:fDuration)
 {
@@ -678,32 +678,40 @@ static L4D_SetPlayerTempHealth(iClient, float iTempHealth)
     SetEntPropFloat(iClient, Prop_Send, "m_healthBufferTime", GetGameTime());
 }
 
-
+//	to use hint icons sBind needs to be an empty string like ""
+//	example mr wangs is (DisplayDirectorHint(iClient, "Meoow", 5, "icon_Tip", "", "255 0 100"))
+//	String:sIcon[]="icon_Tip", String:sBind[]="+jump"
 stock DisplayDirectorHint(iClient, String:sHintTxt[128], iHintTimeout, String:sIcon[]="icon_Tip", String:sBind[]="+jump", String:sHintColorRGB[]="255 0 100")
 {
-	static iEntity;
-	iEntity = CreateEntityByName("env_instructor_hint");
-
-	static String:sValues[64];
-
-	FormatEx(sValues, sizeof(sValues), "hint%d", iClient);
-	DispatchKeyValue(iClient, "targetname", sValues);
-	DispatchKeyValue(iEntity, "hint_target", sValues);
-
-	Format(sValues, sizeof(sValues), "%d", iHintTimeout);
-	DispatchKeyValue(iEntity, "hint_timeout", sValues);
-	DispatchKeyValue(iEntity, "hint_range", "100");
-	Format(sValues, sizeof(sValues), "%s", sIcon);
-	DispatchKeyValue(iEntity, "hint_icon_onscreen", sValues);
-	DispatchKeyValue(iEntity, "hint_binding", sBind);
-	Format(sValues, sizeof(sValues), "%s", sHintTxt);
-	DispatchKeyValue(iEntity, "hint_caption", sHintTxt);
-	DispatchKeyValue(iEntity, "hint_color", sHintColorRGB);
-	DispatchSpawn(iEntity);
-	AcceptEntityInput(iEntity, "ShowHint", iClient);
-
-	Format(sValues, sizeof(sValues), "OnUser1 !self:Kill::%d:1", iHintTimeout);
-	SetVariantString(sValues);
-	AcceptEntityInput(iEntity, "AddOutput");
-	AcceptEntityInput(iEntity, "FireUser1");
+    static iEntity;
+    iEntity = CreateEntityByName("env_instructor_hint");
+    
+    static String:sValues[64];
+    
+    FormatEx(sValues, sizeof(sValues), "hint%d", iClient);
+    DispatchKeyValue(iClient, "targetname", sValues);
+    DispatchKeyValue(iEntity, "hint_target", sValues);
+    
+    Format(sValues, sizeof(sValues), "%d", iHintTimeout);
+    DispatchKeyValue(iEntity, "hint_timeout", sValues);
+    DispatchKeyValue(iEntity, "hint_range", "100");
+    
+    if(sBind[0] == '\0')
+        DispatchKeyValue(iEntity, "hint_icon_onscreen", sIcon);
+    else
+    {
+        DispatchKeyValue(iEntity, "hint_icon_onscreen", "use_binding");
+        DispatchKeyValue(iEntity, "hint_binding", sBind);
+    }
+    
+    Format(sValues, sizeof(sValues), "%s", sHintTxt);
+    DispatchKeyValue(iEntity, "hint_caption", sHintTxt);
+    DispatchKeyValue(iEntity, "hint_color", sHintColorRGB);
+    DispatchSpawn(iEntity);
+    AcceptEntityInput(iEntity, "ShowHint", iClient);
+    
+    Format(sValues, sizeof(sValues), "OnUser1 !self:Kill::%d:1", iHintTimeout);
+    SetVariantString(sValues);
+    AcceptEntityInput(iEntity, "AddOutput");
+    AcceptEntityInput(iEntity, "FireUser1");
 }
