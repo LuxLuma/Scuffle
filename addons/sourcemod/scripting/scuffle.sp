@@ -509,7 +509,8 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
                     RemovePlayerItem(client, ent);
                     AcceptEntityInput(ent,"kill");
 
-                    if (g_itemHealth[client] > 0.0) {
+                    // enter only if survivor is crippled
+                    if (g_itemHealth[client] > 0.0 && g_health[client] == 1) {
                         L4D_SetPlayerTempHealth(client, g_itemHealth[client]);
                         g_itemHealth[client] = 0.0;
                     }
