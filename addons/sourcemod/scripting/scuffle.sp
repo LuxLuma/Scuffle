@@ -35,6 +35,10 @@ float g_lastScuffle[MAXPLAYERS + 1];
 float g_secondsCheck[MAXPLAYERS + 1];
 float g_scuffleStart[MAXPLAYERS + 1];
 
+//lux always gotta be different :D
+static Float:fAnimChangeDur[MAXPLAYERS+1];
+static Float:fAnimChangeSpeed[MAXPLAYERS+1];
+
 int g_maxRevives;
 float g_decayRate;
 float g_healthReviveBit;
@@ -110,7 +114,10 @@ void ResetClient(int client, bool hardReset=false) {
     g_payments[client] = 0;
     g_attackId[client] = 0;
     g_notified[client] = 0;
-
+    
+    fAnimChangeDur[client] = 0.0;
+	fAnimChangeSpeed[client] = 0.0;
+	
     if (hardReset) {
         g_tokens[client] = g_token;
         g_cooldowns[client] = 0.0;
@@ -757,4 +764,45 @@ stock DisplayDirectorHint(iClient, String:sHintTxt[128], iHintTimeout, String:sI
     SetVariantString(sValues);
     AcceptEntityInput(iEntity, "AddOutput");
     AcceptEntityInput(iEntity, "FireUser1");
+}
+
+
+public OnClientPutInServer(iClient)
+{
+	fAnimChangeDur[iClient] = 0.0;
+	
+	if(IsFakeClient(iClient))
+		return;
+		
+	SDKHook(iClient, SDKHook_PostThinkPost, HooksSpeedUpAnim);
+}
+
+public OnClientDisconnect(iClient)
+{
+	fAnimChangeDur[iClient] = 0.0;
+	
+	if(IsFakeClient(iClient))
+		return;
+	
+	SDKUnhook(iClient, SDKHook_PostThinkPost, HooksSpeedUpAnim);
+}
+
+public HooksSpeedUpAnim(iClient)
+{
+	if(!IsPlayerAlive(iClient) || GetClientTeam(iClient) != 2) 
+		return;
+	
+	if(fAnimChangeDur[iClient] < GetGameTime())
+		return;
+	
+	SetEntPropFloat(iClient, Prop_Send, "m_flPlaybackRate", fAnimChangeSpeed[iClient]);
+}
+
+//iClient		Client index
+//fAnimTime		5.0 // animation manipulation duration
+//fAnimSpeed	2.0 // doubles animation speed
+SetAnimationSpeed(iClient, Float:fAnimTime, Float:fAnimSpeed)
+{
+	fAnimChangeDur[iClient] = GetGameTime() + fAnimTime;
+	fAnimChangeSpeed[iClient] = GetGameTime() + fAnimSpeed;
 }
