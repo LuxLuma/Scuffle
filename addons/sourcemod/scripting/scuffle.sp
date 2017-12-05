@@ -52,6 +52,36 @@ ConVar g_cvReviveLoss; float g_reviveLossTime;
 ConVar g_cvReviveShiftBit; int g_reviveShiftBit;
 ConVar g_cvKillChance; int g_killChance;
 
+char g_shiftKey[26];
+char g_shiftKeyMap[26][26] = {
+"+attack",      // 0    IN_ATTACK
+"+jump",        // 1    IN_JUMP
+"+duck",        // 2    IN_DUCK
+"+forward",     // 3    IN_FORWARD
+"+back",        // 4    IN_BACK
+"+use",         // 5    IN_USE
+"+cancel",      // 6?   IN_CANCEL
+"+left",        // 7    IN_LEFT
+"+right",       // 8?   IN_RIGHT
+"+moveleft",    // 9?   IN_MOVELEFT
+"+moveright",   // 10   IN_MOVERIGHT
+"+attack2",     // 11   IN_ATTACK2
+"+run",         // 12?  IN_RUN
+"+reload",      // 13   IN_RELOAD
+"+alt1",        // 14?  IN_ALT1
+"+alt2",        // 15?  IN_ALT2
+"+score",       // 16?  IN_SCORE
+"+speed",       // 17   IN_SPEED  // THIS IS WALK
+"+walk",        // 18?  IN_WALK
+"+zoom",        // 19   IN_ZOOM
+"+weapon1",     // 20?  IN_WEAPON1
+"+weapon2",     // 21?  IN_WEAPON2
+"+bullrush",    // 22?  IN_BULLRUSH
+"+grenade1",    // 23?  IN_GRENADE1
+"+grenade2",    // 24?  IN_GRENADE2
+"+attack3"      // 25   IN_ATTACK3
+};
+
 public Plugin myinfo= {
     name = PLUGIN_NAME,
     author = "Lux & Victor \"NgBUCKWANGS\" Gonzalez",
@@ -254,7 +284,12 @@ public void UpdateConVarsHook(Handle cvHandle, const char[] oldVal, const char[]
     }
 
     else if (StrEqual(cvName, "scuffle_shiftbit")) {
-        g_reviveShiftBit = 1 << GetConVarInt(cvHandle);
+        static int shiftBit;
+        shiftBit = GetConVarInt(cvHandle);
+        SetConVarBounds(cvHandle, ConVarBound_Lower, true, 0.0);
+        SetConVarBounds(cvHandle, ConVarBound_Upper, true, 25.0);
+        g_shiftKey = g_shiftKeyMap[shiftBit];
+        g_reviveShiftBit = 1 << shiftBit;
     }
 
     else if (StrEqual(cvName, "scuffle_killchance")) {
@@ -382,7 +417,7 @@ bool CanPlayerScuffle(int client) {
 
     if (status[client] > 0) {
         notice = "Tap or hold to self-revive!";
-        key = "+jump";
+        key = g_shiftKey;
     }
 
     Format(notice, sizeof(notice), "[scuffle] %s", notice);
