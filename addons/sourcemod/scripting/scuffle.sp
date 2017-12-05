@@ -54,32 +54,32 @@ ConVar g_cvKillChance; int g_killChance;
 
 char g_shiftKey[26];
 char g_shiftKeyMap[26][26] = {
-"+attack",      // 0    IN_ATTACK
-"+jump",        // 1    IN_JUMP
-"+duck",        // 2    IN_DUCK
-"+forward",     // 3    IN_FORWARD
-"+back",        // 4    IN_BACK
-"+use",         // 5    IN_USE
-"+cancel",      // 6?   IN_CANCEL
-"+left",        // 7    IN_LEFT
-"+right",       // 8?   IN_RIGHT
-"+moveleft",    // 9?   IN_MOVELEFT
-"+moveright",   // 10   IN_MOVERIGHT
-"+attack2",     // 11   IN_ATTACK2
-"+run",         // 12?  IN_RUN
-"+reload",      // 13   IN_RELOAD
-"+alt1",        // 14?  IN_ALT1
-"+alt2",        // 15?  IN_ALT2
-"+score",       // 16?  IN_SCORE
-"+speed",       // 17   IN_SPEED  // THIS IS WALK
-"+walk",        // 18?  IN_WALK
-"+zoom",        // 19   IN_ZOOM
-"+weapon1",     // 20?  IN_WEAPON1
-"+weapon2",     // 21?  IN_WEAPON2
-"+bullrush",    // 22?  IN_BULLRUSH
-"+grenade1",    // 23?  IN_GRENADE1
-"+grenade2",    // 24?  IN_GRENADE2
-"+attack3"      // 25   IN_ATTACK3
+    "+attack",      // 0    IN_ATTACK
+    "+jump",        // 1    IN_JUMP
+    "+duck",        // 2    IN_DUCK
+    "+forward",     // 3    IN_FORWARD
+    "+back",        // 4    IN_BACK
+    "+use",         // 5    IN_USE
+    "+cancel",      // 6?   IN_CANCEL
+    "+left",        // 7    IN_LEFT
+    "+right",       // 8?   IN_RIGHT
+    "+moveleft",    // 9?   IN_MOVELEFT
+    "+moveright",   // 10   IN_MOVERIGHT
+    "+attack2",     // 11   IN_ATTACK2
+    "+run",         // 12?  IN_RUN
+    "+reload",      // 13   IN_RELOAD
+    "+alt1",        // 14?  IN_ALT1
+    "+alt2",        // 15?  IN_ALT2
+    "+score",       // 16?  IN_SCORE
+    "+speed",       // 17   IN_SPEED  // THIS IS WALK
+    "+walk",        // 18?  IN_WALK
+    "+zoom",        // 19   IN_ZOOM
+    "+weapon1",     // 20?  IN_WEAPON1
+    "+weapon2",     // 21?  IN_WEAPON2
+    "+bullrush",    // 22?  IN_BULLRUSH
+    "+grenade1",    // 23?  IN_GRENADE1
+    "+grenade2",    // 24?  IN_GRENADE2
+    "+attack3"      // 25   IN_ATTACK3
 };
 
 public Plugin myinfo= {
@@ -527,7 +527,9 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 
             if (gameTime - g_reviveDuration >= g_lastScuffle[client]) {
                 if (attackerId > 0) {
-                    L4D2_Stagger(attackerId, true);
+                    CreateTimer(2.8, NoGodTimer, client);
+                    SetEntProp(client, Prop_Data, "m_takedamage", 0, 1);
+                    L4D2_Stagger(attackerId);
 
                     if (GetRandomInt(1, 100) <= g_killChance) {
                         ForcePlayerSuicide(attackerId);
@@ -560,6 +562,12 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
         else if (g_cleanup[client]) {
             ResetClient(client);
         }
+    }
+}
+
+public Action NoGodTimer(Handle timer, int client) {
+    if (IsClientConnected(client) && GetClientTeam(client) == 2) {
+        SetEntProp(client, Prop_Data, "m_takedamage", 2, 1);
     }
 }
 
@@ -634,12 +642,9 @@ stock L4D2_RunScript(const String:sCode[], any:...)
 }
 
 // use this to stagger survivor/infected (vector stagger away from origin)
-stock L4D2_Stagger(iClient, bool:bResetStagger=false, Float:fPos[3]=NULL_VECTOR)
+stock L4D2_Stagger(iClient, Float:fPos[3]=NULL_VECTOR)
 {
     L4D2_RunScript("GetPlayerFromUserID(%d).Stagger(Vector(%d,%d,%d))", GetClientUserId(iClient), RoundFloat(fPos[0]), RoundFloat(fPos[1]), RoundFloat(fPos[2]));
-
-    if(bResetStagger)
-        SetEntPropFloat(iClient, Prop_Send, "m_staggerTimer", 0.0, 1);
 }
 
 /*
