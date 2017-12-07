@@ -11,10 +11,7 @@
 #include <sdktools>
 #include <sdkhooks>
 #define PLUGIN_NAME "Scuffle"
-#define PLUGIN_VERSION "0.0.7"
-
-int g_blockDamage[MAXPLAYERS + 1];  // block [client] = attackerId
-float g_staggerTime[MAXPLAYERS + 1];  // stagger time on [attackerId] until GetGameTime + float
+#define PLUGIN_VERSION "0.0.8"
 
 ConVar g_cvTokens; int g_token;  // initial number of times a survivor can self revive
 int g_tokens[MAXPLAYERS + 1];  // how many tokens does [client] have left?
@@ -63,10 +60,14 @@ ConVar g_cvReviveLoss; float g_reviveLossTime;
 ConVar g_cvReviveShiftBit; int g_reviveShiftBit;
 ConVar g_cvKillChance; int g_killChance;
 
-ConVar g_cvHunterStagger; float g_hunterStagger;
-ConVar g_cvSmokerStagger; float g_smokerStagger;
-ConVar g_cvChargerStagger; float g_chargerStagger;
-ConVar g_cvJockeyStagger; float g_jockeyStagger;
+int g_blockDamage[MAXPLAYERS + 1];  // block [client] = attackerId
+float g_staggerTime[MAXPLAYERS + 1];  // stagger time on [attackerId] until GetGameTime + float
+float g_staggers[4];  // hunter, smoker, charger, jockey
+
+ConVar g_cvHunterStagger;
+ConVar g_cvSmokerStagger;
+ConVar g_cvChargerStagger;
+ConVar g_cvJockeyStagger;
 
 char g_shiftKey[26];
 char g_shiftKeyMap[26][26] = {
@@ -341,19 +342,19 @@ public void UpdateConVarsHook(Handle cvHandle, const char[] oldVal, const char[]
     }
 
     else if (StrEqual(cvName, "scuffle_hunterstagger")) {
-        g_hunterStagger = GetConVarFloat(cvHandle);
+        g_staggers[0] = GetConVarFloat(cvHandle);
     }
 
     else if (StrEqual(cvName, "scuffle_smokerstagger")) {
-        g_smokerStagger = GetConVarFloat(cvHandle);
+        g_staggers[1] = GetConVarFloat(cvHandle);
     }
 
     else if (StrEqual(cvName, "scuffle_chargerstagger")) {
-        g_chargerStagger = GetConVarFloat(cvHandle);
+        g_staggers[2] = GetConVarFloat(cvHandle);
     }
 
     else if (StrEqual(cvName, "scuffle_jockeystagger")) {
-        g_jockeyStagger = GetConVarFloat(cvHandle);
+        g_staggers[3] = GetConVarFloat(cvHandle);
     }
 }
 
@@ -669,14 +670,13 @@ bool IsPlayerInTrouble(int client, int &attackerId) {
     //         return true;
     //     }
 
-    static float staggerTimes[4] = {3.0, 1.2, 3.5, 1.2};
     static char attackTypes[4][] = {"m_pounceAttacker", "m_tongueOwner", "m_pummelAttacker", "m_jockeyAttacker"};
 
     for (int i = 0; i < sizeof(attackTypes); i++) {
         if (HasEntProp(client, Prop_Send, attackTypes[i])) {
             attackerId = GetEntPropEnt(client, Prop_Send, attackTypes[i]);
             if (attackerId > 0) {
-                g_staggerTime[attackerId] = GetGameTime() + staggerTimes[i];
+                g_staggerTime[attackerId] = GetGameTime() + g_staggers[i];
                 g_attackId[client] = attackerId;
                 return true;
             }
