@@ -11,7 +11,7 @@
 #include <sdktools>
 #include <sdkhooks>
 #define PLUGIN_NAME "Scuffle"
-#define PLUGIN_VERSION "0.0.9"
+#define PLUGIN_VERSION "0.0.10"
 
 ConVar g_cvRequires; char g_requires[1024];  // e.g., "kit=30;pills=50;adrenaline"
 char g_requirements[32][32];  // required items to revive e.g., kit, pills, adrenaline
@@ -63,6 +63,7 @@ ConVar g_cvReviveTap; float g_reviveTapTime;
 ConVar g_cvReviveLoss; float g_reviveLossTime;
 ConVar g_cvReviveShiftBit; int g_reviveShiftBit;
 ConVar g_cvKillChance; int g_killChance;
+ConVar g_cvStayDown; bool g_stayDown;
 
 int g_blockDamage[MAXPLAYERS + 1];  // block [client] = attackerId
 float g_staggerTime[MAXPLAYERS + 1];  // stagger time on [attackerId] until GetGameTime + float
@@ -165,11 +166,6 @@ ResetClientTokens(int client) {
             g_allTokens[client] += g_attackToken;
         }
     }
-
-    PrintToServer("all %d", g_allTokens[client]);
-    PrintToServer("ledge %d", g_ledgeTokens[client]);
-    PrintToServer("ground %d", g_groundTokens[client]);
-    PrintToServer("attack %d", g_attackTokens[client]);
 }
 
 bool IsEntityValid(int ent) {
@@ -209,6 +205,7 @@ public void OnPluginStart() {
     SetupCvar(g_cvReviveLoss, "scuffle_losstime", "0.2", "Progress chip away at missed jumps");
     SetupCvar(g_cvReviveShiftBit, "scuffle_shiftbit", "1", "Shift bit for revival see https://sm.alliedmods.net/api/index.php?fastload=file&id=47&");
     SetupCvar(g_cvKillChance, "scuffle_killchance", "0", "Chance of killing an SI when reviving");
+    SetupCvar(g_cvStayDown, "scuffle_staydown", "0", "0: Break SI hold and get up. 1: Break SI hold and stay down (unless SI dies, if requiring items, this makes it require double)");
 
     SetupCvar(g_cvHunterStagger, "scuffle_hunterstagger", "3.0", "Hunter stagger and block time");
     SetupCvar(g_cvSmokerStagger, "scuffle_smokerstagger", "1.2", "Smoker stagger and block time");
@@ -278,7 +275,6 @@ public void UpdateConVarsHook(Handle cvHandle, const char[] oldVal, const char[]
     SetConVarString(cvHandle, newVal);
 
     if (StrEqual(cvName, "scuffle_requires")) {
-
         // clean up the previous item/health arrays
         for (int i = 0; i < sizeof(g_requirements[]); i++) {
             g_itemHealthMap[i] = 0.0;
@@ -376,6 +372,10 @@ public void UpdateConVarsHook(Handle cvHandle, const char[] oldVal, const char[]
         SetConVarBounds(cvHandle, ConVarBound_Lower, true, 0.0);
         SetConVarBounds(cvHandle, ConVarBound_Upper, true, 100.0);
         g_killChance = GetConVarInt(cvHandle);
+    }
+
+    else if (StrEqual(cvName, "scuffle_staydown")) {
+        g_stayDown = GetConVarBool(cvHandle);
     }
 
     else if (StrEqual(cvName, "scuffle_hunterstagger")) {
@@ -565,8 +565,12 @@ void RestoreClientHealth(int client) {
         g_health[client] = 1;
 
         if (g_healthBuffer[client] <= 0.0) {
-            g_healthBuffer[client] = g_healthReviveBit;
             strike++;
+
+            switch (g_itemHealth[client] > 0.0) {
+                case 1: g_healthBuffer[client] = g_itemHealth[client];
+                case 0: g_healthBuffer[client] = g_healthReviveBit;
+            }
         }
     }
 
@@ -626,21 +630,6 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
             g_lastKeyPress[client] = buttons;
 
             if (gameTime - g_reviveDuration >= g_lastScuffle[client]) {
-                if (attackerId > 0) {
-                    g_blockDamage[client] = attackerId;
-                    CreateTimer(0.01, StaggerTimer, client, TIMER_REPEAT);
-                    L4D2_Stagger(attackerId);
-
-                    if (GetRandomInt(1, 100) <= g_killChance) {
-                        ForcePlayerSuicide(attackerId);
-                        g_blockDamage[client] = 0;
-                    }
-                }
-
-                RestoreClientHealth(client);
-                g_cooldowns[client] = gameTime + g_cooldown;
-                ent = g_payments[client];
-
                 if (g_allTokens[client] > 0) {
                     g_allTokens[client]--;
                 }
@@ -653,17 +642,30 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
                     g_attackTokens[client]--;
                 }
 
+                ent = g_payments[client];
                 if (IsEntityValid(ent)) {
                     RemovePlayerItem(client, ent);
                     AcceptEntityInput(ent,"kill");
+                }
 
-                    // enter only if survivor is crippled
-                    if (g_itemHealth[client] > 0.0 && g_health[client] == 1) {
-                        L4D_SetPlayerTempHealth(client, g_itemHealth[client]);
-                        g_itemHealth[client] = 0.0;
+                if (attackerId > 0) {
+                    g_blockDamage[client] = attackerId;
+                    CreateTimer(0.01, StaggerTimer, client, TIMER_REPEAT);
+                    L4D2_Stagger(attackerId);
+
+                    if (GetRandomInt(1, 100) <= g_killChance) {
+                        ForcePlayerSuicide(attackerId);
+                        g_blockDamage[client] = 0;
                     }
                 }
 
+                if (g_blockDamage[client] > 0 && g_stayDown) {
+                    g_lastScuffle[client] = gameTime;
+                    return;
+                }
+
+                g_cooldowns[client] = gameTime + g_cooldown;
+                RestoreClientHealth(client);
                 // and penalize ...
             }
         }
