@@ -11,7 +11,7 @@
 #include <sdktools>
 #include <sdkhooks>
 #define PLUGIN_NAME "Scuffle"
-#define PLUGIN_VERSION "0.0.6"
+#define PLUGIN_VERSION "0.0.7"
 
 int g_blockDamage[MAXPLAYERS + 1];  // block [client] = attackerId
 float g_staggerTime[MAXPLAYERS + 1];  // stagger time on [attackerId] until GetGameTime + float
@@ -62,6 +62,11 @@ ConVar g_cvReviveTap; float g_reviveTapTime;
 ConVar g_cvReviveLoss; float g_reviveLossTime;
 ConVar g_cvReviveShiftBit; int g_reviveShiftBit;
 ConVar g_cvKillChance; int g_killChance;
+
+ConVar g_cvHunterStagger; float g_hunterStagger;
+ConVar g_cvSmokerStagger; float g_smokerStagger;
+ConVar g_cvChargerStagger; float g_chargerStagger;
+ConVar g_cvJockeyStagger; float g_jockeyStagger;
 
 char g_shiftKey[26];
 char g_shiftKeyMap[26][26] = {
@@ -167,6 +172,12 @@ public void OnPluginStart() {
     SetupCvar(g_cvReviveLoss, "scuffle_losstime", "0.2", "Progress chip away at missed jumps");
     SetupCvar(g_cvReviveShiftBit, "scuffle_shiftbit", "1", "Shift bit for revival see https://sm.alliedmods.net/api/index.php?fastload=file&id=47&");
     SetupCvar(g_cvKillChance, "scuffle_killchance", "0", "Chance of killing an SI when reviving");
+
+    SetupCvar(g_cvHunterStagger, "scuffle_hunterstagger", "3.0", "Hunter stagger and block time");
+    SetupCvar(g_cvSmokerStagger, "scuffle_smokerstagger", "1.2", "Smoker stagger and block time");
+    SetupCvar(g_cvChargerStagger, "scuffle_chargerstagger", "3.5", "Charger stagger and block time");
+    SetupCvar(g_cvJockeyStagger, "scuffle_jockeystagger", "1.2", "Jockey stagger and block time");
+
     AutoExecConfig(true, "scuffle");
 
     for (int i = 1; i <= MaxClients; i++) {
@@ -327,6 +338,22 @@ public void UpdateConVarsHook(Handle cvHandle, const char[] oldVal, const char[]
         SetConVarBounds(cvHandle, ConVarBound_Lower, true, 0.0);
         SetConVarBounds(cvHandle, ConVarBound_Upper, true, 100.0);
         g_killChance = GetConVarInt(cvHandle);
+    }
+
+    else if (StrEqual(cvName, "scuffle_hunterstagger")) {
+        g_hunterStagger = GetConVarFloat(cvHandle);
+    }
+
+    else if (StrEqual(cvName, "scuffle_smokerstagger")) {
+        g_smokerStagger = GetConVarFloat(cvHandle);
+    }
+
+    else if (StrEqual(cvName, "scuffle_chargerstagger")) {
+        g_chargerStagger = GetConVarFloat(cvHandle);
+    }
+
+    else if (StrEqual(cvName, "scuffle_jockeystagger")) {
+        g_jockeyStagger = GetConVarFloat(cvHandle);
     }
 }
 
