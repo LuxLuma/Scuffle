@@ -11,7 +11,7 @@
 #include <sdktools>
 #include <sdkhooks>
 #define PLUGIN_NAME "Scuffle"
-#define PLUGIN_VERSION "0.0.10"
+#define PLUGIN_VERSION "0.0.11"
 
 ConVar g_cvRequires; char g_requires[1024];  // e.g., "kit=30;pills=50;adrenaline"
 char g_requirements[32][32];  // required items to revive e.g., kit, pills, adrenaline
@@ -446,24 +446,26 @@ bool CanPlayerScuffle(int client) {
         status[client] = -3;
     }
 
-    if (g_allTokens[client] == 0) {
-        notice = "All scuffling disabled. Call for rescue!!";
-        status[client] = -1;
-    }
+    if (g_allTokens[client] != -1) {
+        if (g_allTokens[client] == 0) {
+            notice = "All scuffling disabled. Call for rescue!!";
+            status[client] = -1;
+        }
 
-    else if (attack[client] == -1 && g_ledgeTokens[client] == 0) {
-        notice = "Ledge scuffle disabled. Call for rescue!!";
-        status[client] = -5;
-    }
+        else if (attack[client] == -1 && g_ledgeTokens[client] == 0) {
+            notice = "Ledge scuffle disabled. Call for rescue!!";
+            status[client] = -5;
+        }
 
-    else if (attack[client] == -2 && g_groundTokens[client] == 0) {
-        notice = "Ground scuffle disabled. Call for rescue!!";
-        status[client] = -6;
-    }
+        else if (attack[client] == -2 && g_groundTokens[client] == 0) {
+            notice = "Ground scuffle disabled. Call for rescue!!";
+            status[client] = -6;
+        }
 
-    else if (attack[client] > 0 && g_attackTokens[client] == 0) {
-        notice = "Attack scuffle disabled. Call for rescue!!";
-        status[client] = -7;
+        else if (attack[client] > 0 && g_attackTokens[client] == 0) {
+            notice = "Attack scuffle disabled. Call for rescue!!";
+            status[client] = -7;
+        }
     }
 
     if (g_lastLeg >= 0) {
