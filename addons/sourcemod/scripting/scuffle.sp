@@ -11,10 +11,7 @@
 #include <sdktools>
 #include <sdkhooks>
 #define PLUGIN_NAME "Scuffle"
-#define PLUGIN_VERSION "0.0.8"
-
-ConVar g_cvTokens; int g_token;  // initial number of times a survivor can self revive
-int g_tokens[MAXPLAYERS + 1];  // how many tokens does [client] have left?
+#define PLUGIN_VERSION "0.0.9"
 
 ConVar g_cvRequires; char g_requires[1024];  // e.g., "kit=30;pills=50;adrenaline"
 char g_requirements[32][32];  // required items to revive e.g., kit, pills, adrenaline
@@ -50,9 +47,16 @@ ConVar g_cvMaxRevives;
 ConVar g_cvCooldown; float g_cooldown;  // time it takes before reviving is possible again
 ConVar g_cvLastLeg; int g_lastLeg;  // reviving turns off when m_currentReviveCount matches
 ConVar g_cvMinHealth; int g_minHealth;  // minimum amount of health to be able to revive
-ConVar g_cvAttack; bool g_canScuffleFromAttack;
-ConVar g_cvLedge; bool g_canScuffleFromLedge;
-ConVar g_cvGround; bool g_canScuffleFromGround;
+
+ConVar g_cvAllTokens; int g_allToken;  // initial number of times a survivor can self revive
+int g_allTokens[MAXPLAYERS + 1];  // how many tokens does [client] have left?
+ConVar g_cvAttackTokens; int g_attackToken;
+int g_attackTokens[MAXPLAYERS + 1];
+ConVar g_cvLedgeTokens; int g_ledgeToken;
+int g_ledgeTokens[MAXPLAYERS + 1];
+ConVar g_cvGroundTokens; int g_groundToken;
+int g_groundTokens[MAXPLAYERS + 1];
+
 ConVar g_cvDuration; float g_reviveDuration;  //
 ConVar g_cvReviveHold; float g_reviveHoldTime;
 ConVar g_cvReviveTap; float g_reviveTapTime;
@@ -130,10 +134,42 @@ void ResetClient(int client, bool hardReset=false) {
 //     fAnimChangeSpeed[client] = 0.0;
 
     if (hardReset) {
-        g_tokens[client] = g_token;
+        ResetClientTokens(client);
         g_cooldowns[client] = 0.0;
         g_blockDamage[client] = 0;
     }
+}
+
+ResetAllClientTokens() {
+    for (int i = 1; i <= MaxClients; i++) {
+        ResetClientTokens(i);
+    }
+}
+
+ResetClientTokens(int client) {
+    g_ledgeTokens[client] = g_ledgeToken;
+    g_groundTokens[client] = g_groundToken;
+    g_attackTokens[client] = g_attackToken;
+    g_allTokens[client] = g_allToken;
+
+    if (g_allToken > -1) {
+        if (g_ledgeToken > 0) {
+            g_allTokens[client] += g_ledgeToken;
+        }
+
+        if (g_groundToken > 0) {
+            g_allTokens[client] += g_groundToken;
+        }
+
+        if (g_attackToken > 0) {
+            g_allTokens[client] += g_attackToken;
+        }
+    }
+
+    PrintToServer("all %d", g_allTokens[client]);
+    PrintToServer("ledge %d", g_ledgeTokens[client]);
+    PrintToServer("ground %d", g_groundTokens[client]);
+    PrintToServer("attack %d", g_attackTokens[client]);
 }
 
 bool IsEntityValid(int ent) {
@@ -159,14 +195,14 @@ public void OnPluginStart() {
     g_cvHealthReviveBit = FindConVar("survivor_revive_health");
     g_cvMaxRevives = FindConVar("survivor_max_incapacitated_count");
 
-    SetupCvar(g_cvTokens, "scuffle_tokens", "-1", "-1: Infinitely, >0: Is a hard limit");
+    SetupCvar(g_cvAllTokens, "scuffle_tokens", "-1", "-1: Infinitely, >0: Total times a survivor can self revive");
+    SetupCvar(g_cvAttackTokens, "scuffle_attack", "-1", "-1: Infinitely, >0: Times a survivor can revive from an SI incap");
+    SetupCvar(g_cvLedgeTokens, "scuffle_ledge", "-1", "-1: Infinitely, >0: Times a survivor can revive from a ledge");
+    SetupCvar(g_cvGroundTokens, "scuffle_ground", "-1", "-1: Infinitely, >0: Times a survivor can revive from the ground");
     SetupCvar(g_cvRequires, "scuffle_requires", "", "Semicolon separated values of inv slots 4 & 5");
     SetupCvar(g_cvCooldown, "scuffle_cooldown", "10", "Cooldown between self-revivals");
     SetupCvar(g_cvLastLeg, "scuffle_lastleg", "2", "0 to survivor_max_incapacitated_count");
     SetupCvar(g_cvMinHealth, "scuffle_minhealth", "1", "Minimum amount of health before a survivor requires help");
-    SetupCvar(g_cvAttack, "scuffle_attack", "1", "Can a survivor break an SI hold");
-    SetupCvar(g_cvLedge, "scuffle_ledge", "1", "Can a survivor pick themselves up from a ledge");
-    SetupCvar(g_cvGround, "scuffle_ground", "1", "Can a survivor pick themselves up from the ground");
     SetupCvar(g_cvDuration, "scuffle_duration", "30.0", "Overall time to spread holds and taps");
     SetupCvar(g_cvReviveHold, "scuffle_holdtime", "0.1", "Chip away at duration when holding jump");
     SetupCvar(g_cvReviveTap, "scuffle_taptime", "1.5", "Chip away at duration when tapping jump");
@@ -241,14 +277,7 @@ public void UpdateConVarsHook(Handle cvHandle, const char[] oldVal, const char[]
     Format(cvVal, sizeof(cvVal), "%s", newVal);
     SetConVarString(cvHandle, newVal);
 
-    if (StrEqual(cvName, "scuffle_tokens")) {
-        if (newVal[0] != EOS) {
-            g_token = GetConVarInt(cvHandle);
-            ResetAllClients();
-        }
-    }
-
-    else if (StrEqual(cvName, "scuffle_requires")) {
+    if (StrEqual(cvName, "scuffle_requires")) {
 
         // clean up the previous item/health arrays
         for (int i = 0; i < sizeof(g_requirements[]); i++) {
@@ -292,16 +321,24 @@ public void UpdateConVarsHook(Handle cvHandle, const char[] oldVal, const char[]
         g_minHealth = GetConVarInt(cvHandle);
     }
 
+    else if (StrEqual(cvName, "scuffle_tokens")) {
+        g_allToken = GetConVarInt(cvHandle);
+        ResetAllClientTokens();
+    }
+
     else if (StrEqual(cvName, "scuffle_attack")) {
-        g_canScuffleFromAttack = GetConVarBool(cvHandle);
+        g_attackToken = GetConVarInt(cvHandle);
+        ResetAllClientTokens();
     }
 
     else if (StrEqual(cvName, "scuffle_ledge")) {
-        g_canScuffleFromLedge = GetConVarBool(cvHandle);
+        g_ledgeToken = GetConVarInt(cvHandle);
+        ResetAllClientTokens();
     }
 
     else if (StrEqual(cvName, "scuffle_ground")) {
-        g_canScuffleFromGround = GetConVarBool(cvHandle);
+        g_groundToken = GetConVarInt(cvHandle);
+        ResetAllClientTokens();
     }
 
     else if (StrEqual(cvName, "scuffle_duration")) {
@@ -409,9 +446,24 @@ bool CanPlayerScuffle(int client) {
         status[client] = -3;
     }
 
-    if (g_tokens[client] == 0) {
-        notice = "Out of tokens. Call for rescue!!";
+    if (g_allTokens[client] == 0) {
+        notice = "All scuffling disabled. Call for rescue!!";
         status[client] = -1;
+    }
+
+    else if (attack[client] == -1 && g_ledgeTokens[client] == 0) {
+        notice = "Ledge scuffle disabled. Call for rescue!!";
+        status[client] = -5;
+    }
+
+    else if (attack[client] == -2 && g_groundTokens[client] == 0) {
+        notice = "Ground scuffle disabled. Call for rescue!!";
+        status[client] = -6;
+    }
+
+    else if (attack[client] > 0 && g_attackTokens[client] == 0) {
+        notice = "Attack scuffle disabled. Call for rescue!!";
+        status[client] = -7;
     }
 
     if (g_lastLeg >= 0) {
@@ -426,23 +478,6 @@ bool CanPlayerScuffle(int client) {
         if (g_health[client] + GetClientHealthBuffer(client) <= float(g_minHealth)) {
             notice = "Not strong enough. Call for rescue!!";
             status[client] = -4;
-        }
-    }
-
-    if (attack[client] != 0) {
-        if (attack[client] == -1 && !g_canScuffleFromLedge) {
-            notice = "Ledge scuffle disabled. Call for rescue!!";
-            status[client] = -5;
-        }
-
-        else if (attack[client] == -2 && !g_canScuffleFromGround) {
-            notice = "Ground scuffle disabled. Call for rescue!!";
-            status[client] = -6;
-        }
-
-        else if (attack[client] > 0 && !g_canScuffleFromAttack) {
-            notice = "Attack scuffle disabled. Call for rescue!!";
-            status[client] = -7;
         }
     }
 
@@ -547,15 +582,15 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
     static int attackerId;
     static int ent;
 
-    attackerId = 0;
-    gameTime = GetGameTime();
-
     if (IsClientConnected(client) && GetClientTeam(client) == 2) {
 
         RecordClientHealth(client);
         if (IsFakeClient(client)) {
             return;
         }
+
+        attackerId = 0;
+        gameTime = GetGameTime();
 
         if (IsPlayerInTrouble(client, attackerId)) {
             g_cleanup[client] = 1;
@@ -606,8 +641,16 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
                 g_cooldowns[client] = gameTime + g_cooldown;
                 ent = g_payments[client];
 
-                if (g_tokens[client] > 0) {
-                    g_tokens[client]--;
+                if (g_allTokens[client] > 0) {
+                    g_allTokens[client]--;
+                }
+
+                if (attackerId == -1 && g_ledgeTokens[client] > 0) {
+                    g_ledgeTokens[client]--;
+                } else if (attackerId == -2 && g_groundTokens[client] > 0) {
+                    g_groundTokens[client]--;
+                } else if (attackerId > 0 && g_attackTokens[client] > 0) {
+                    g_attackTokens[client]--;
                 }
 
                 if (IsEntityValid(ent)) {
