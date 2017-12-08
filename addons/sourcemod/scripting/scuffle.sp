@@ -935,6 +935,6 @@ public HooksSpeedUpAnim(iClient)
 SetAnimationSpeed(iClient, Float:fAnimTime, Float:fAnimSpeed)
 {
     fAnimChangeDur[iClient] = GetGameTime() + fAnimTime;
-    fAnimChangeSpeed[iClient] = GetGameTime() + fAnimSpeed;
+    fAnimChangeSpeed[iClient] = fAnimSpeed;	//wtf is this mistake ;P
 }
 */
