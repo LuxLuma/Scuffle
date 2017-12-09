@@ -11,7 +11,7 @@
 #include <sdktools>
 #include <sdkhooks>
 #define PLUGIN_NAME "Scuffle"
-#define PLUGIN_VERSION "0.0.11"
+#define PLUGIN_VERSION "0.0.12"
 
 ConVar g_cvRequires; char g_requires[1024];  // e.g., "kit=30;pills=50;adrenaline"
 char g_requirements[32][32];  // required items to revive e.g., kit, pills, adrenaline
@@ -154,6 +154,8 @@ ResetClientTokens(int client) {
     g_allTokens[client] = g_allToken;
 
     if (g_allToken > -1) {
+        g_allTokens[client] = 0;
+
         if (g_ledgeToken > 0) {
             g_allTokens[client] += g_ledgeToken;
         }
@@ -164,6 +166,10 @@ ResetClientTokens(int client) {
 
         if (g_attackToken > 0) {
             g_allTokens[client] += g_attackToken;
+        }
+
+        if (g_allTokens[client] == 0) {
+            g_allTokens = g_allToken;
         }
     }
 }
