@@ -28,14 +28,6 @@ int g_cleanup[MAXPLAYERS + 1];  // clean up [client] arrays?
 int g_lastKeyPress[MAXPLAYERS + 1];  // last key [client] pressed (during scuffle)
 float g_lastScuffle[MAXPLAYERS + 1];  // time remaining until [client] meets g_reviveDuration
 
-//lux always gotta be different :D
-// static Float:fAnimChangeDur[MAXPLAYERS+1];
-// static Float:fAnimChangeSpeed[MAXPLAYERS+1];
-
-// int g_maxRevives;
-// float g_decayRate;
-// float g_healthReviveBit;
-
 ConVar g_cvDecayRate;
 ConVar g_cvHealthReviveBit;
 ConVar g_cvMaxRevives;
@@ -48,8 +40,8 @@ ConVar g_cvCooldown; float g_cooldown;  // time it takes before reviving is poss
 ConVar g_cvLastLeg; int g_lastLeg;  // reviving turns off when m_currentReviveCount matches
 ConVar g_cvMinHealth; int g_minHealth;  // minimum amount of health to be able to revive
 
-ConVar g_cvAllTokens; int g_allToken;  // initial number of times a survivor can self revive
-int g_allTokens[MAXPLAYERS + 1];  // how many tokens does [client] have left?
+ConVar g_cvAnyTokens; int g_anyToken;  // tokens shared among all types of -1
+int g_anyTokens[MAXPLAYERS + 1];  // how many tokens does [client] have left?
 ConVar g_cvAttackTokens; int g_attackToken;
 int g_attackTokens[MAXPLAYERS + 1];
 ConVar g_cvLedgeTokens; int g_ledgeToken;
@@ -113,16 +105,38 @@ public Plugin myinfo= {
 }
 
 public void OnMapStart() {
-    ResetAllClients();
+    ResetAllClients(true);
 }
 
-void ResetAllClients() {
+void ResetAllClients(bool hardReset=false) {
+
+    /**
+    * Reset all client scuffle tracking (see ResetClient)
+    *
+    * @param hardReset  reset middle state, default is false
+    * @return void
+    */
+
     for (int i = 1; i <= MaxClients; i++) {
-        ResetClient(i, true);
+        ResetClient(i, hardReset);
     }
 }
 
 void ResetClient(int client, bool hardReset=false) {
+
+    /**
+    * Reset specific client scuffle tracking
+    *
+    * Scuffle keeps track of a clients state and upon healing, death, restart
+    * and joining of the server, that information should be reset and cleaned.
+    * See OnPlayerRunCmd on how these arrays are used. The hardReset argument
+    * will reset a clients revival tokens, cooldown and block damage arrays.
+    *
+    * @param client     client to reset
+    * @param hardReset  reset middle state, default is false
+    * @return void
+    */
+
     g_cleanup[client] = 0;
     g_lastScuffle[client] = 0.0;
     g_staggerTime[client] = 0.0;
@@ -131,9 +145,6 @@ void ResetClient(int client, bool hardReset=false) {
     g_payments[client] = 0;
     g_attackId[client] = 0;
 
-//     fAnimChangeDur[client] = 0.0;
-//     fAnimChangeSpeed[client] = 0.0;
-
     if (hardReset) {
         ResetClientTokens(client);
         g_cooldowns[client] = 0.0;
@@ -141,44 +152,106 @@ void ResetClient(int client, bool hardReset=false) {
     }
 }
 
-ResetAllClientTokens() {
+void ResetAllClientTokens() {
+
+    /**
+    * Reset all clients token tally on server (see ResetClientTokens)
+    *
+    * @return void
+    */
+
     for (int i = 1; i <= MaxClients; i++) {
         ResetClientTokens(i);
     }
 }
 
-ResetClientTokens(int client) {
+void ResetClientTokens(int client) {
+
+    /**
+    * Reset specific clients token tally on server.
+    *
+    * Tokens represent the number of times a survivor can self revive. There
+    * are 4 different types. Any, ledge, ground and attack. A value of -1 means
+    * infinite and anything else will be decremented on self-revival. If "any" is
+    * set to -1 then all types are infinite (see CanPlayerScuffle). If "any" is
+    * set to 0 or higher, the value is shared among all types of -1 value.
+    *
+    * If you would like a survivor to self-revive in any situation up to and
+    * no more than 10 times (until death, heal and round start), set "any" to 10
+    * and the rest to -1. This will allow self-revival in any situation up to
+    * 10 times. If you would like to limit a specific revival, set it and that'll
+    * be the total times a self-revival can happen in that specific situation.
+    *
+    * If "any" is greater than zero, its value is shared among all -1 types until
+    * "any" reaches zero and all scuffling is disabled. The value of "any" will
+    * change *if* a value greater than -1 is provided for all remaining types.
+    *
+    * @param client     client to reset
+    * @return void
+    */
+
     g_ledgeTokens[client] = g_ledgeToken;
     g_groundTokens[client] = g_groundToken;
     g_attackTokens[client] = g_attackToken;
-    g_allTokens[client] = g_allToken;
+    g_anyTokens[client] = g_anyToken;
 
-    if (g_allToken > -1) {
-        g_allTokens[client] = 0;
+    static int i;
+    i = 0;
 
-        if (g_ledgeToken > 0) {
-            g_allTokens[client] += g_ledgeToken;
+    if (g_anyToken > -1) {
+        if (g_ledgeToken > -1) {
+            g_anyTokens[client] += g_ledgeToken;
+            i++;
         }
 
-        if (g_groundToken > 0) {
-            g_allTokens[client] += g_groundToken;
+        if (g_groundToken > -1) {
+            g_anyTokens[client] += g_groundToken;
+            i++;
         }
 
-        if (g_attackToken > 0) {
-            g_allTokens[client] += g_attackToken;
+        if (g_attackToken > -1) {
+            g_anyTokens[client] += g_attackToken;
+            i++;
         }
 
-        if (g_allTokens[client] == 0) {
-            g_allTokens = g_allToken;
+        if (i == 3) {
+            g_anyTokens[client] = (
+                g_ledgeToken + g_groundToken + g_attackToken
+            );
+
+            SetConVarInt(g_cvAnyTokens, g_anyTokens[client]);
         }
     }
+
+//     PrintToServer("----");
+//     PrintToServer("Any %d", g_anyTokens[client]);
+//     PrintToServer("Ledge %d", g_ledgeTokens[client]);
+//     PrintToServer("Ground %d", g_groundTokens[client]);
+//     PrintToServer("Attack %d", g_attackTokens[client]);
+//     PrintToServer("----");
 }
 
 bool IsEntityValid(int ent) {
+
+    /**
+    * Check if an entity is valid
+    *
+    * @param ent     Entity to check for validity
+    * @return void
+    */
+
     return (ent > MaxClients && ent <= 2048 && IsValidEntity(ent));
 }
 
 public void OnClientPostAdminCheck(int client) {
+
+    /**
+    * Setup for clients entering the server
+    *
+    * @param client     client to setup
+    * @return void
+    */
+
     if (client > 0) {
         if (IsClientConnected(client) && !IsFakeClient(client)) {
             SDKHook(client, SDKHook_OnTakeDamage, OnTakeDamageHook);
@@ -193,11 +266,13 @@ public void OnPluginStart() {
     HookEvent("player_death", PlayerDeathHook);
     HookEvent("bot_player_replace", BotPlayerReplaceHook, EventHookMode_Pre);
 
+    // get a handle on general cvars required for scuffle
     g_cvDecayRate = FindConVar("pain_pills_decay_rate");
     g_cvHealthReviveBit = FindConVar("survivor_revive_health");
     g_cvMaxRevives = FindConVar("survivor_max_incapacitated_count");
 
-    SetupCvar(g_cvAllTokens, "scuffle_tokens", "-1", "-1: Infinitely, >0: Total times a survivor can self revive");
+    // setup the cvars we created specifically for scuffle
+    SetupCvar(g_cvAnyTokens, "scuffle_any", "-1", "-1: Infinitely, >0: Total times a survivor can self revive");
     SetupCvar(g_cvAttackTokens, "scuffle_attack", "-1", "-1: Infinitely, >0: Times a survivor can revive from an SI incap");
     SetupCvar(g_cvLedgeTokens, "scuffle_ledge", "-1", "-1: Infinitely, >0: Times a survivor can revive from a ledge");
     SetupCvar(g_cvGroundTokens, "scuffle_ground", "-1", "-1: Infinitely, >0: Times a survivor can revive from the ground");
@@ -212,21 +287,20 @@ public void OnPluginStart() {
     SetupCvar(g_cvReviveShiftBit, "scuffle_shiftbit", "1", "Shift bit for revival see https://sm.alliedmods.net/api/index.php?fastload=file&id=47&");
     SetupCvar(g_cvKillChance, "scuffle_killchance", "0", "Chance of killing an SI when reviving");
     SetupCvar(g_cvStayDown, "scuffle_staydown", "0", "0: Break SI hold and get up. 1: Break SI hold and stay down (unless SI dies, if requiring items, this makes it require double)");
-
     SetupCvar(g_cvHunterStagger, "scuffle_hunterstagger", "3.0", "Hunter stagger and block time");
     SetupCvar(g_cvSmokerStagger, "scuffle_smokerstagger", "1.2", "Smoker stagger and block time");
     SetupCvar(g_cvChargerStagger, "scuffle_chargerstagger", "3.5", "Charger stagger and block time");
     SetupCvar(g_cvJockeyStagger, "scuffle_jockeystagger", "1.2", "Jockey stagger and block time");
-
     AutoExecConfig(true, "scuffle");
 
+    // if scuffle is reloaded, get all clients back on the same page
     for (int i = 1; i <= MaxClients; i++) {
         OnClientPostAdminCheck(i);
     }
 }
 
 public void RoundStartHook(Handle event, const char[] name, bool dontBroadcast) {
-    ResetAllClients();
+    ResetAllClients(true);
 }
 
 public void HealSuccessHook(Handle event, const char[] name, bool dontBroadcast) {
@@ -323,8 +397,8 @@ public void UpdateConVarsHook(Handle cvHandle, const char[] oldVal, const char[]
         g_minHealth = GetConVarInt(cvHandle);
     }
 
-    else if (StrEqual(cvName, "scuffle_tokens")) {
-        g_allToken = GetConVarInt(cvHandle);
+    else if (StrEqual(cvName, "scuffle_any")) {
+        g_anyToken = GetConVarInt(cvHandle);
         ResetAllClientTokens();
     }
 
@@ -452,8 +526,8 @@ bool CanPlayerScuffle(int client) {
         status[client] = -3;
     }
 
-    if (g_allTokens[client] != -1) {
-        if (g_allTokens[client] == 0) {
+    if (g_anyTokens[client] != -1) {
+        if (g_anyTokens[client] == 0) {
             notice = "All scuffling disabled. Call for rescue!!";
             status[client] = -1;
         }
@@ -638,8 +712,8 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
             g_lastKeyPress[client] = buttons;
 
             if (gameTime - g_reviveDuration >= g_lastScuffle[client]) {
-                if (g_allTokens[client] > 0) {
-                    g_allTokens[client]--;
+                if (g_anyTokens[client] > 0) {
+                    g_anyTokens[client]--;
                 }
 
                 if (attackerId == -1 && g_ledgeTokens[client] > 0) {
