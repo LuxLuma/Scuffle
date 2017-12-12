@@ -2,19 +2,22 @@
 
 /*
 * license = "https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html#SEC1",
-* TODO:
-* - add an option to strike a user for getting up (till maxRevives)
 */
 
 #pragma semicolon 1
 #include <sourcemod>
 #include <sdktools>
 #include <sdkhooks>
+//#pragma newdecls required
 #define PLUGIN_NAME "Scuffle"
-#define PLUGIN_VERSION "0.0.12"
+#define PLUGIN_VERSION "0.0.13"
 
-ConVar g_cvRequires; char g_requires[1024];  // e.g., "kit=30;pills=50;adrenaline"
+ConVar g_cvRequires; char g_requirementsRaw[1024];  // e.g., "kit=30;pills=50;adrenaline"
 char g_requirements[32][32];  // required items to revive e.g., kit, pills, adrenaline
+ConVar g_cvRequireSlots; char g_requireSlots[5];  // user defined slot order to scan for requirements
+bool g_requireNil;  // true if survivors require nothing to scuffle
+bool g_requireAny;  // true if any item can be provided for a scuffle
+
 float g_itemHealthMap[32];  // health map of items (above) e.g., 50.0, 0.0, 10.0
 float g_itemHealth[MAXPLAYERS + 1];  // [client] current item health e.g, 50.0, 0.0, 10.0
 
@@ -42,12 +45,12 @@ ConVar g_cvMinHealth; int g_minHealth;  // minimum amount of health to be able t
 
 ConVar g_cvAnyTokens; int g_anyToken;  // tokens shared among all types of -1
 int g_anyTokens[MAXPLAYERS + 1];  // how many tokens does [client] have left?
-ConVar g_cvAttackTokens; int g_attackToken;
-int g_attackTokens[MAXPLAYERS + 1];
-ConVar g_cvLedgeTokens; int g_ledgeToken;
-int g_ledgeTokens[MAXPLAYERS + 1];
-ConVar g_cvGroundTokens; int g_groundToken;
-int g_groundTokens[MAXPLAYERS + 1];
+ConVar g_cvAttackTokens; int g_attackToken;  // tokens to break an SI hold
+int g_attackTokens[MAXPLAYERS + 1];  // how many tokens does [client] have left against SI?
+ConVar g_cvLedgeTokens; int g_ledgeToken;  // tokens for picking oneself up from a ledge
+int g_ledgeTokens[MAXPLAYERS + 1];  // how many tokens does [client] have against ledges?
+ConVar g_cvGroundTokens; int g_groundToken;  // tokens to get up from the ground
+int g_groundTokens[MAXPLAYERS + 1];  // how many tokens does [client] have to get up from the ground?
 
 ConVar g_cvDuration; float g_reviveDuration;  //
 ConVar g_cvReviveHold; float g_reviveHoldTime;
@@ -59,7 +62,7 @@ ConVar g_cvStayDown; bool g_stayDown;
 
 int g_blockDamage[MAXPLAYERS + 1];  // block [client] = attackerId
 float g_staggerTime[MAXPLAYERS + 1];  // stagger time on [attackerId] until GetGameTime + float
-float g_staggers[4];  // hunter, smoker, charger, jockey
+float g_staggers[4];  // hunter, smoker, charger, jockey. See IsPlayerInTrouble
 
 ConVar g_cvHunterStagger;
 ConVar g_cvSmokerStagger;
@@ -113,7 +116,7 @@ void ResetAllClients(bool hardReset=false) {
     /**
     * Reset all client scuffle tracking (see ResetClient)
     *
-    * @param hardReset  reset middle state, default is false
+    * @param hardReset  Reset middle state, default is false
     * @return void
     */
 
@@ -132,8 +135,14 @@ void ResetClient(int client, bool hardReset=false) {
     * See OnPlayerRunCmd on how these arrays are used. The hardReset argument
     * will reset a clients revival tokens, cooldown and block damage arrays.
     *
-    * @param client     client to reset
-    * @param hardReset  reset middle state, default is false
+    * Variables immediately reset are those that are defined during a scuffle.
+    * It is safe to reset a client at any point as whether or not they're in a
+    * scuffle, these variables will be immediately defined again when needed.
+    * The hardReset argument resets all client tracking (information that is
+    * tracked between scuffles e.g., tokens, cooldown, etc).
+    *
+    * @param client     Client to reset
+    * @param hardReset  Reset middle state, default is false
     * @return void
     */
 
@@ -186,7 +195,7 @@ void ResetClientTokens(int client) {
     * "any" reaches zero and all scuffling is disabled. The value of "any" will
     * change *if* a value greater than -1 is provided for all remaining types.
     *
-    * @param client     client to reset
+    * @param client     Client to reset
     * @return void
     */
 
@@ -222,13 +231,6 @@ void ResetClientTokens(int client) {
             SetConVarInt(g_cvAnyTokens, g_anyTokens[client]);
         }
     }
-
-//     PrintToServer("----");
-//     PrintToServer("Any %d", g_anyTokens[client]);
-//     PrintToServer("Ledge %d", g_ledgeTokens[client]);
-//     PrintToServer("Ground %d", g_groundTokens[client]);
-//     PrintToServer("Attack %d", g_attackTokens[client]);
-//     PrintToServer("----");
 }
 
 bool IsEntityValid(int ent) {
@@ -236,7 +238,7 @@ bool IsEntityValid(int ent) {
     /**
     * Check if an entity is valid
     *
-    * @param ent     Entity to check for validity
+    * @param ent    Entity to check for validity
     * @return void
     */
 
@@ -248,8 +250,6 @@ public void OnClientPostAdminCheck(int client) {
     /**
     * Setup for clients entering the server
     *
-    * @param client     client to setup
-    * @return void
     */
 
     if (client > 0) {
@@ -291,6 +291,7 @@ public void OnPluginStart() {
     SetupCvar(g_cvSmokerStagger, "scuffle_smokerstagger", "1.2", "Smoker stagger and block time");
     SetupCvar(g_cvChargerStagger, "scuffle_chargerstagger", "3.5", "Charger stagger and block time");
     SetupCvar(g_cvJockeyStagger, "scuffle_jockeystagger", "1.2", "Jockey stagger and block time");
+    SetupCvar(g_cvRequireSlots, "scuffle_slots", "43", "Zero based slot search order (slot 1 is ignored)");
     AutoExecConfig(true, "scuffle");
 
     // if scuffle is reloaded, get all clients back on the same page
@@ -322,6 +323,20 @@ public void BotPlayerReplaceHook(Handle event, const char[] name, bool dontBroad
 }
 
 void SetRevive(int client, int count) {
+
+    /**
+    * Set a client's revival count (for survivors only)
+    *
+    * If a clients revival count is less than m_currentReviveCount stop any
+    * heartbeat sound and return the clients vision to normal. If revive count
+    * is greater than or equal to survivor_max_incapacitated_count emit the
+    * heartbeat and visually notify client with "black and white" vision.
+    *
+    * @param client     Client to modify
+    * @param count      Client's current revival count
+    * @return void
+    */
+
     if (client <= 0) {
         return;
     }
@@ -343,29 +358,60 @@ void SetRevive(int client, int count) {
 }
 
 void SetupCvar(Handle &cvHandle, char[] name, char[] value, char[] details) {
+
+    /**
+    * Create, hook and update console variables (a convenient wrapper)
+    *
+    * Create a cvar and hook it to UpdateConVarsHook to watch for updates. Give
+    * the cvar a name, a value and provide helpful usage details. SetupCvar is
+    * a fast and painless way to create cvars quickly.
+    *
+    * @param cvHandle   Console variable handle (cvar)
+    * @param name       Name of cvar to create
+    * @param value      Cvar value
+    * @param details    Cvar details
+    * @return void
+    */
+
     cvHandle = CreateConVar(name, value, details);
     HookConVarChange(cvHandle, UpdateConVarsHook);
     UpdateConVarsHook(cvHandle, value, value);
 }
 
 public void UpdateConVarsHook(Handle cvHandle, const char[] oldVal, const char[] newVal) {
+
+    /**
+    * Manage and cache console variable (cvar) changes
+    *
+    * When a cvar we've hooked is changed, it'll go through here. Most changes
+    * are simple and the new value is cached into a global variable. In few cases
+    * values may require parsing or validation before having it's final value
+    * globally accessible.
+    *
+    */
+
     char cvName[32], cvVal[128];
     GetConVarName(cvHandle, cvName, sizeof(cvName));
     Format(cvVal, sizeof(cvVal), "%s", newVal);
     SetConVarString(cvHandle, newVal);
 
     if (StrEqual(cvName, "scuffle_requires")) {
+
+        g_requireNil = false;
+        g_requireAny = false;
+
         // clean up the previous item/health arrays
         for (int i = 0; i < sizeof(g_requirements[]); i++) {
             g_itemHealthMap[i] = 0.0;
             g_requirements[i] = "";
         }
 
-        GetConVarString(cvHandle, g_requires, sizeof(g_requires));
+        GetConVarString(cvHandle, g_requirementsRaw, sizeof(g_requirementsRaw));
         ExplodeString(cvVal, ";", g_requirements, 32, sizeof(g_requirements[]));
 
         static char reqs[32][32];
         if (g_requirements[0][0] == EOS) {
+            g_requireNil = true;
             return;
         }
 
@@ -378,6 +424,10 @@ public void UpdateConVarsHook(Handle cvHandle, const char[] oldVal, const char[]
                     g_requirements[i] = reqs[0];
                     g_itemHealthMap[i] = StringToFloat(reqs[1]);
                     reqs[1] = "0.0";
+
+                    if (StrEqual(reqs[0], "any", false)) {
+                        g_requireAny = true;
+                    }
                 }
             }
         }
@@ -473,30 +523,113 @@ public void UpdateConVarsHook(Handle cvHandle, const char[] oldVal, const char[]
     else if (StrEqual(cvName, "scuffle_jockeystagger")) {
         g_staggers[3] = GetConVarFloat(cvHandle);
     }
+
+    else if (StrEqual(cvName, "scuffle_slots")) {
+        GetConVarString(cvHandle, g_requireSlots, sizeof(g_requireSlots));
+        // survivors always have pistols when incapicitated
+        ReplaceString(g_requireSlots, sizeof(g_requireSlots), "1", "");
+    }
 }
 
-bool HasRequirement(int client, const char item[32]) {
-    for (int i = 0; i < sizeof(g_requirements[]); i++) {
-        if (g_requirements[i][0] == EOS) {
-            switch (i == 0) {
-                case 1: return true;
-                case 0: return false;
-            }
+bool HasRequirement(int client) {
+
+    /**
+    * Check if client meets scuffling requirements
+    *
+    * If a specific item (e.g., pills, adrenaline) is required for a scuffle,
+    * this function will scan client for that item. If an item has its health
+    * defined, its associated health is only applied after striking the client.
+    * If a survivor never fully goes down and isn't truly incapicitated, the
+    * associated health will not be applied.
+    *
+    * Searches are case insensitive (e.g, KIT = Kit = kit). They can also be
+    * shortened (e.g., KIT = weapon_first_aid_kit). A special item called "any"
+    * can also be used and it's position will make a difference. If "any" is at
+    * position zero, we return on the first item found in scanned slots. If "any"
+    * is in a non-zero position, all other items will be fully considered.
+    *
+    * @param client     Survivor to scan for requirement
+    * @return           True if client has requirement, false otherwise
+    */
+
+    if (g_requireNil) {
+        return true;
+    }
+
+    static char slot[2];
+    static char item[32];
+    static int anyEnt; anyEnt = 0;
+    static float anyEntHealth; anyEntHealth = 0.0;
+    static bool breakMain; breakMain = false;
+    static int ent;
+
+    for (int i = 0; i <= sizeof(g_requireSlots); i++) {
+
+        if (breakMain || g_requireSlots[i] == EOS) {
+            break;
         }
 
-        if (StrContains(item, g_requirements[i]) >= 0) {
-            if (g_itemHealthMap[i]) {
-                g_itemHealth[client] = g_itemHealthMap[i];
+        strcopy(slot, 2, g_requireSlots[i]);  // get the slot
+        ent = GetPlayerWeaponSlot(client, StringToInt(slot));
+
+        if (IsEntityValid(ent)) {
+            GetEntityClassname(ent, item, sizeof(item));
+
+            if (anyEnt == 0 && g_requireAny) {
+                anyEnt = ent;
             }
 
-            return true;
+            for (int j = 0; j < sizeof(g_requirements[]); j++) {
+
+                if (g_requirements[j][0] == EOS) {
+                    break;
+                }
+
+                else if (StrContains(item, g_requirements[j], false) >= 0) {
+                    g_itemHealth[client] = g_itemHealthMap[j];
+                    g_payments[client] = ent;
+                    return true;
+                }
+
+                else if (StrEqual("any", g_requirements[j], false)) {
+                    anyEntHealth = g_itemHealthMap[j];
+
+                    if (j == 0) {
+                        breakMain = true;
+                        break;
+                    }
+                }
+            }
         }
+    }
+
+    if (IsEntityValid(anyEnt)) {
+        g_itemHealth[client] = anyEntHealth;
+        g_payments[client] = anyEnt;
+        return true;
     }
 
     return false;
 }
 
 bool CanPlayerScuffle(int client) {
+
+    /**
+    * Check if a survivor can scuffle and notify as to why or why not
+    *
+    * There are several reasons why a survivor may or may not be able to self
+    * revive and this function will check for that reason. The function has early
+    * termination logic and should be used with IsPlayerInTrouble. If a survivor
+    * is in trouble, has already been scanned and is not in cooldown, early
+    * termination applies with the previous status as the reason.
+    *
+    * Early termination for all reasons but cooldown are final. If a client is in
+    * cooldown, the cooldown must be fully over with before CanPlayerScuffle will
+    * scan them again.
+    *
+    * @param client     Survivor to check for self revival
+    * @return           True if client can scuffle, false otherwise
+    */
 
     static char key[32];
     static char notice[128];
@@ -564,31 +697,13 @@ bool CanPlayerScuffle(int client) {
     }
 
     if (status[client] == 0) {
-        if (g_requirements[0][0] == EOS) {
+        if (HasRequirement(client)) {
             status[client] = 1;
         }
 
         else {
-            static char item[32];
-            static int ent;
-
-            for (int i = 4; i >= 3; i--) {  // check pills, then kits, etc
-                ent = GetPlayerWeaponSlot(client, i);
-
-                if (IsEntityValid(ent)) {
-                    GetEntityClassname(ent, item, sizeof(item));
-                    if (HasRequirement(client, item)) {
-                        g_payments[client] = ent;
-                        status[client] = 2;
-                        break;
-                    }
-                }
-            }
-
-            if (status[client] == 0) {
-                notice = "Requirements missing e.g., pills, adrenaline";
-                status[client] = -8;
-            }
+            notice = "Requirements missing e.g., pills, adrenaline";
+            status[client] = -8;
         }
     }
 
@@ -612,6 +727,19 @@ float GetClientHealthBuffer(int client, float defaultVal=0.0) {
 }
 
 void RecordClientHealth(int client) {
+
+    /**
+    * Take a snapshot of a survivors health and health buffer
+    *
+    * Record a client's health state. If a client is not incapicitated their
+    * health is recorded unmodified. If a client is incapicitated the health
+    * recorded is modified to hurt every one second while down. This will not
+    * reflect on a survivor that is helped up by someone else but will affect
+    * survivors that revive themselves (in an effort to prevent abuse).
+    *
+    * @param client     Survivor to snapshot
+    * @return void
+    */
 
     static float attackHealth[MAXPLAYERS + 1];
     static float gameTime;
@@ -641,6 +769,19 @@ void RecordClientHealth(int client) {
 }
 
 void RestoreClientHealth(int client) {
+
+    /**
+    * Restore a client's health state after they've revived themselves
+    *
+    * If a survivor has a recorded health state of less than zero (both health
+    * and health buffer), the client will get a strike. In this and all other
+    * cases, the health restored to a client is from calculations derived from
+    * RecordClientHealth.
+    *
+    * @param client     Survivor to restore
+    * @return void
+    */
+
     int strike = GetEntProp(client, Prop_Send, "m_currentReviveCount");
 
     if (g_health[client] <= 0) {
@@ -663,6 +804,16 @@ void RestoreClientHealth(int client) {
 }
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon) {
+
+    /**
+    * Manage survivors in self revival situations
+    *
+    * Record a survivors health state every time through. If a survivor is in
+    * trouble proceed to see if they can actually scuffle through it. Plenty of
+    * customizable cvars affect the outcome of this forward. The purpose boils
+    * down to "IsPlayerInTrouble" and "CanPlayerScuffle".
+    *
+    */
 
     static float gameTime;
     static int attackerId;
@@ -759,6 +910,21 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 }
 
 public Action OnTakeDamageHook(int victim, int &attacker, int &inflictor, float &damage, int &damagetype) {
+
+    /**
+    * Block damage on self reviving survivors against specific SI attacks
+    *
+    * When a survivor breaks loose from an SI incap (e.g., Hunter, Charger) the
+    * time it takes for the survivor to get back up on their feet is time where
+    * the survivor is vulnerable to any further secondary attack by the same SI.
+    * Survivors are only protected against the specific SI that incapped them.
+    *
+    * The protection time is derived from the cvars g_cv<SI>Stagger. A Hunter's
+    * default stagger time is 3.0 seconds and only during the first 3.0 seconds
+    * of the Hunter staggering is the survivor protected against their attack.
+    *
+    */
+
     if (attacker > 0 && g_blockDamage[victim] == attacker) {
         damage = 0.0;
         return Plugin_Changed;
@@ -768,6 +934,16 @@ public Action OnTakeDamageHook(int victim, int &attacker, int &inflictor, float 
 }
 
 public Action StaggerTimer(Handle timer, int client) {
+
+    /**
+    * Stagger client's attacker repeatedly
+    *
+    * If a client passed in has an attackerId in g_blockDamage[client] the found
+    * attackerId is staggered until the timer is exhausted. If the attackerId is
+    * invalid or until it is invalid or until the timer runs out, the attackerId
+    * is staggered and its attack blocked against client (see OnTakeDamageHook).
+    *
+    */
 
     static int attackerId;
     attackerId = g_blockDamage[client];
@@ -787,17 +963,25 @@ public Action StaggerTimer(Handle timer, int client) {
 
 bool IsPlayerInTrouble(int client, int &attackerId) {
 
-    /* Check if player is being attacked and is immobilized. If the player is
-    not being attacked, check if they're incapacitated. An attackerId > 0 is the
-    ID of the SI attacking the player. An attackerId of -1 means the player is
-    hanging from a ledge. An attackerId of -2 means the player is rotting.
+    /**
+    * Check to see if client is in trouble
+    *
+    * Check if client is being attacked and is immobilized. If the player is not
+    * being attacked, check if they're incapacitated. An attackerId > 0 is the
+    * ID of the SI attacking the player. An attackerId of -1 means the player is
+    * hanging from a ledge. An attackerId of -2 means the player is rotting.
+    *
+    * @param client         survivor to check for trouble
+    * @param attackerId     A referenced attackerId (returns type/ID of attacker)
+    * @return               true if survivor is in trouble, otherwise false
     */
 
-    //     if (g_attackId[client] != 0) {
-    //         return true;
-    //     }
-
-    static char attackTypes[4][] = {"m_pounceAttacker", "m_tongueOwner", "m_pummelAttacker", "m_jockeyAttacker"};
+    static char attackTypes[4][] = {
+        "m_pounceAttacker",     // g_staggers[0] + GetGameTime()
+        "m_tongueOwner",        // g_staggers[1] ...
+        "m_pummelAttacker",     // g_staggers[2] ...
+        "m_jockeyAttacker"      // g_staggers[3] ...
+    };
 
     for (int i = 0; i < sizeof(attackTypes); i++) {
         if (HasEntProp(client, Prop_Send, attackTypes[i])) {
