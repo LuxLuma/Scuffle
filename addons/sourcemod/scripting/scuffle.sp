@@ -8,9 +8,9 @@
 #include <sourcemod>
 #include <sdktools>
 #include <sdkhooks>
-//#pragma newdecls required
+#pragma newdecls required
 #define PLUGIN_NAME "Scuffle"
-#define PLUGIN_VERSION "0.0.14"
+#define PLUGIN_VERSION "0.0.15"
 
 ConVar g_cvRequires; char g_requirementsRaw[1024];  // e.g., "kit=30;pills=50;adrenaline"
 char g_requirements[32][32];  // required items to revive e.g., kit, pills, adrenaline
@@ -298,7 +298,9 @@ public void OnPluginStart() {
 
     // if scuffle is reloaded, get all clients back on the same page
     for (int i = 1; i <= MaxClients; i++) {
-        OnClientPostAdminCheck(i);
+        if (IsClientConnected(i) && IsClientInGame(i)) {
+            OnClientPostAdminCheck(i);
+        }
     }
 }
 
@@ -1013,73 +1015,120 @@ bool IsPlayerInTrouble(int client, int &attackerId) {
     return false;
 }
 
-// void ResetAbility(int attacker) {
-//     // It would be nice to reset an SI's special attack
-// }
+stock void L4D2_RunScript(const char[] sCode, any ...) {
 
-// CREDITS TO Timocop for L4D2_RunScript function and L4D2_Stagger function
-stock L4D2_RunScript(const String:sCode[], any:...)
-{
-    static iScriptLogic = INVALID_ENT_REFERENCE;
+    /**
+    * Run a VScript (Credit to Timocop)
+    *
+    * @param sCode      Magic
+    * @return void
+    */
+
+    static int iScriptLogic = INVALID_ENT_REFERENCE;
     if(iScriptLogic == INVALID_ENT_REFERENCE || !IsValidEntity(iScriptLogic)) {
         iScriptLogic = EntIndexToEntRef(CreateEntityByName("logic_script"));
-        if(iScriptLogic == INVALID_ENT_REFERENCE || !IsValidEntity(iScriptLogic))
-        {
+
+        if(iScriptLogic == INVALID_ENT_REFERENCE || !IsValidEntity(iScriptLogic)) {
             SetFailState("Could not create 'logic_script'");
         }
 
         DispatchSpawn(iScriptLogic);
     }
 
-    static String:sBuffer[512];
+    static char sBuffer[512];
     VFormat(sBuffer, sizeof(sBuffer), sCode, 2);
-
     SetVariantString(sBuffer);
     AcceptEntityInput(iScriptLogic, "RunScriptCode");
 }
 
-// use this to stagger survivor/infected (vector stagger away from origin)
-stock L4D2_Stagger(iClient, Float:fPos[3]=NULL_VECTOR)
-{
-    L4D2_RunScript("GetPlayerFromUserID(%d).Stagger(Vector(%d,%d,%d))", GetClientUserId(iClient), RoundFloat(fPos[0]), RoundFloat(fPos[1]), RoundFloat(fPos[2]));
+stock void L4D2_Stagger(int iClient, float fPos[3]=NULL_VECTOR) {
+
+    /**
+    * Stagger a client (Credit to Timocop)
+    *
+    * @param iClient    Client to stagger
+    * @param fPos       Vector to stagger
+    * @return void
+    */
+
+    L4D2_RunScript(
+        "GetPlayerFromUserID(%d).Stagger(Vector(%d,%d,%d))",
+        GetClientUserId(iClient),
+        RoundFloat(fPos[0]),
+        RoundFloat(fPos[1]),
+        RoundFloat(fPos[2])
+    );
 }
 
-/*
-iClient = client
-fStartTime = GetGameTime() to start the bar at the time you want.
-fDuration = GetGameTime() + 5 Progress bar will finish in 5secs
-*/
-static ShowProgressBar(iClient, const Float:fStartTime, const Float:fDuration)
-{
+static void ShowProgressBar(int iClient, const float fStartTime, const float fDuration) {
+
+    /**
+    * Show the client a progress bar
+    *
+    * @param iClient        Client to show progress bar
+    * @param fStartTime     Time e.g., GetGameTime()
+    * @param fDuration      Number of seconds to show e.g., 10.5
+    * @return void
+    */
+
     SetEntPropFloat(iClient, Prop_Send, "m_flProgressBarStartTime", fStartTime);
     SetEntPropFloat(iClient, Prop_Send, "m_flProgressBarDuration", fDuration);
 }
 
-static Client_ExecuteCheat(iClient, const String:sCmd[], const String:sArgs[])
-{
-    new flags = GetCommandFlags(sCmd);
+static void Client_ExecuteCheat(int iClient, const char[] sCmd, const char[] sArgs) {
+
+    /**
+    * Execute a cheat
+    *
+    * @param iClient    Client that will execute the cheat
+    * @param sCmd       Command e.g., z_spawn
+    * @param sArgs      Variable arguments e.g., "tank auto"
+    * @return void
+    */
+
+    int flags = GetCommandFlags(sCmd);
     SetCommandFlags(sCmd, flags & ~FCVAR_CHEAT);
     FakeClientCommand(iClient, "%s %s", sCmd, sArgs);
     SetCommandFlags(sCmd, flags | FCVAR_CHEAT);
 }
 
-//l4d_stocks include
-static L4D_SetPlayerTempHealth(iClient, float iTempHealth)
-{
-    SetEntPropFloat(iClient, Prop_Send, "m_healthBuffer", iTempHealth);
+static void L4D_SetPlayerTempHealth(int iClient, float fTempHealth) {
+
+    /**
+    * Set a survivors health buffer
+    *
+    * @param iClient        Client to apply health buffer
+    * @param fTempHealth    Amount of health e.g., 30.0
+    * @return void
+    */
+
+    SetEntPropFloat(iClient, Prop_Send, "m_healthBuffer", fTempHealth);
     SetEntPropFloat(iClient, Prop_Send, "m_healthBufferTime", GetGameTime());
 }
 
-//	to use hint icons sBind needs to be an empty string like ""
-//	example mr wangs is (DisplayDirectorHint(iClient, "Meoow", 5, "icon_Tip", "", "255 0 100"))
-//	String:sIcon[]="icon_Tip", String:sBind[]="+jump"
-stock DisplayDirectorHint(iClient, String:sHintTxt[128], iHintTimeout, String:sIcon[]="icon_Tip", String:sBind[]="+jump", String:sHintColorRGB[]="255 0 100")
-{
-    static iEntity;
+stock void DisplayDirectorHint(
+    int iClient, char sHintTxt[128], int iHintTimeout, char[] sIcon="icon_Tip",
+    char[] sBind="+jump", char[] sHintColorRGB="255 0 100") {
+
+    /**
+    * Display a Director hint to a client
+    *
+    * Note: If sBind has a value, it'll replace any sIcon. These are prefixed
+    * onto the hint text displayed to a client.
+    *
+    * @param iClient        Client to show Director hint
+    * @param sHintTxt       Hint Text
+    * @param iHintTimeout   How long before text times out e.g., 10
+    * @param sIcon          Icon to use (will not show if sBind has a value)
+    * @param sBind          Key hint (Shows key in place of sIcon)
+    * @param sHintColorRGB  Color of Director text
+    * @return void
+    */
+
+    static int iEntity;
     iEntity = CreateEntityByName("env_instructor_hint");
 
-    static String:sValues[64];
-
+    static char sValues[64];
     FormatEx(sValues, sizeof(sValues), "hint%d", iClient);
     DispatchKeyValue(iClient, "targetname", sValues);
     DispatchKeyValue(iEntity, "hint_target", sValues);
@@ -1088,10 +1137,11 @@ stock DisplayDirectorHint(iClient, String:sHintTxt[128], iHintTimeout, String:sI
     DispatchKeyValue(iEntity, "hint_timeout", sValues);
     DispatchKeyValue(iEntity, "hint_range", "100");
 
-    if(sBind[0] == '\0')
+    if (sBind[0] == '\0') {
         DispatchKeyValue(iEntity, "hint_icon_onscreen", sIcon);
-    else
-    {
+    }
+
+    else {
         DispatchKeyValue(iEntity, "hint_icon_onscreen", "use_binding");
         DispatchKeyValue(iEntity, "hint_binding", sBind);
     }
@@ -1107,97 +1157,3 @@ stock DisplayDirectorHint(iClient, String:sHintTxt[128], iHintTimeout, String:sI
     AcceptEntityInput(iEntity, "AddOutput");
     AcceptEntityInput(iEntity, "FireUser1");
 }
-
-/*
-Simple revive func just feed it client index and will get 50 temp hp
-*/
-
-/*
-static ReviveClient(iClient)
-{
-    static iIncapCount;
-    iIncapCount = GetEntProp(iClient, Prop_Send, "m_currentReviveCount") + 1;
-
-    while (g_health[iClient] > 100) {
-        g_health[iClient] -= 100;
-    }
-
-    Client_ExecuteCheat(iClient, "give", "health");
-    SetEntityHealth(iClient, g_health[iClient]);
-    SetEntProp(iClient, Prop_Send, "m_currentReviveCount", iIncapCount);
-
-    L4D_SetPlayerTempHealth(iClient, g_healthBuffer[iClient]);
-
-    if(GetMaxReviveCount() <= GetEntProp(iClient, Prop_Send, "m_currentReviveCount"))
-        SetEntProp(iClient, Prop_Send, "m_bIsOnThirdStrike", 1, 1);
-}
-
-static GetSurvivorReviveHealth()
-{
-    static Handle:hSurvivorReviveHealth = INVALID_HANDLE;
-    if (hSurvivorReviveHealth == INVALID_HANDLE) {
-        hSurvivorReviveHealth = FindConVar("survivor_revive_health");
-        if (hSurvivorReviveHealth == INVALID_HANDLE) {
-            SetFailState("'survivor_revive_health' Cvar not found!");
-        }
-    }
-
-    return GetConVarInt(hSurvivorReviveHealth);
-}
-
-static GetMaxReviveCount()
-{
-    static Handle:hMaxReviveCount = INVALID_HANDLE;
-    if (hMaxReviveCount == INVALID_HANDLE) {
-        hMaxReviveCount = FindConVar("survivor_max_incapacitated_count");
-        if (hMaxReviveCount == INVALID_HANDLE) {
-            SetFailState("'survivor_max_incapacitated_count' Cvar not found!");
-        }
-    }
-
-    return GetConVarInt(hMaxReviveCount);
-}
-
-public OnClientPutInServer(iClient)
-{
-    fAnimChangeDur[iClient] = 0.0;
-
-    if(IsFakeClient(iClient))
-        return;
-
-    SDKHook(iClient, SDKHook_PostThinkPost, HooksSpeedUpAnim);
-    SDKHook(iClient, SDKHook_OnTakeDamage, OnTakeDamageHook);
-}
-
-public OnClientDisconnect(iClient)
-{
-    fAnimChangeDur[iClient] = 0.0;
-
-    if(IsFakeClient(iClient))
-        return;
-
-    SDKUnhook(iClient, SDKHook_PostThinkPost, HooksSpeedUpAnim);
-    SDKUnhook(iClient, SDKHook_OnTakeDamage, OnTakeDamageHook);
-}
-
-public HooksSpeedUpAnim(iClient)
-{
-    if(!IsPlayerAlive(iClient) || GetClientTeam(iClient) != 2)
-        return;
-
-    if(fAnimChangeDur[iClient] < GetGameTime())
-        return;
-
-    SetEntPropFloat(iClient, Prop_Send, "m_flPlaybackRate", fAnimChangeSpeed[iClient]);
-}
-
-//iClient		Client index
-//fAnimTime		5.0 // animation manipulation duration
-//fAnimSpeed	2.0 // doubles animation speed
-
-SetAnimationSpeed(iClient, Float:fAnimTime, Float:fAnimSpeed)
-{
-    fAnimChangeDur[iClient] = GetGameTime() + fAnimTime;
-    fAnimChangeSpeed[iClient] = fAnimSpeed;	//wtf is this mistake ;P
-}
-*/
