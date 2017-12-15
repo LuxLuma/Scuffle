@@ -213,3 +213,4 @@ I love L4D2, developing, testing and running servers more than I like playing th
 
 - [My Steam Profile](http://steamcommunity.com/id/buckwangs/)
 - [My Scuffle GitLab Page](https://gitlab.com/vbgunz/Scuffle)
+- [AlliedModders Thread](https://forums.alliedmods.net/showthread.php?t=303635)

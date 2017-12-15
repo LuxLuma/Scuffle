@@ -1,8 +1,8 @@
-# ABM Change Log
+# Scuffle Change Log
 
-## [0.0.1] - 2017-28-08
+## [0.0.16] - 2017-15-12
 ### Added
-- First Release
+- First Test Release
 
 ## This CHANGELOG follows http://keepachangelog.com/en/0.3.0/
 ### CHANGELOG legend
