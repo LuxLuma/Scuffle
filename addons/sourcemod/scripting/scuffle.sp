@@ -10,7 +10,7 @@
 #include <sdkhooks>
 //#pragma newdecls required
 #define PLUGIN_NAME "Scuffle"
-#define PLUGIN_VERSION "0.0.13"
+#define PLUGIN_VERSION "0.0.14"
 
 ConVar g_cvRequires; char g_requirementsRaw[1024];  // e.g., "kit=30;pills=50;adrenaline"
 char g_requirements[32][32];  // required items to revive e.g., kit, pills, adrenaline
@@ -59,6 +59,7 @@ ConVar g_cvReviveLoss; float g_reviveLossTime;
 ConVar g_cvReviveShiftBit; int g_reviveShiftBit;
 ConVar g_cvKillChance; int g_killChance;
 ConVar g_cvStayDown; bool g_stayDown;
+ConVar g_cvHurtSurvivor; int g_hurtSurvivor;  // applies if survivor revives themselves
 
 int g_blockDamage[MAXPLAYERS + 1];  // block [client] = attackerId
 float g_staggerTime[MAXPLAYERS + 1];  // stagger time on [attackerId] until GetGameTime + float
@@ -272,26 +273,27 @@ public void OnPluginStart() {
     g_cvMaxRevives = FindConVar("survivor_max_incapacitated_count");
 
     // setup the cvars we created specifically for scuffle
-    SetupCvar(g_cvAnyTokens, "scuffle_any", "-1", "-1: Infinitely, >0: Total times a survivor can self revive");
-    SetupCvar(g_cvAttackTokens, "scuffle_attack", "-1", "-1: Infinitely, >0: Times a survivor can revive from an SI incap");
-    SetupCvar(g_cvLedgeTokens, "scuffle_ledge", "-1", "-1: Infinitely, >0: Times a survivor can revive from a ledge");
-    SetupCvar(g_cvGroundTokens, "scuffle_ground", "-1", "-1: Infinitely, >0: Times a survivor can revive from the ground");
-    SetupCvar(g_cvRequires, "scuffle_requires", "", "Semicolon separated values of inv slots 4 & 5");
-    SetupCvar(g_cvCooldown, "scuffle_cooldown", "10", "Cooldown between self-revivals");
-    SetupCvar(g_cvLastLeg, "scuffle_lastleg", "2", "0 to survivor_max_incapacitated_count");
-    SetupCvar(g_cvMinHealth, "scuffle_minhealth", "1", "Minimum amount of health before a survivor requires help");
-    SetupCvar(g_cvDuration, "scuffle_duration", "30.0", "Overall time to spread holds and taps");
-    SetupCvar(g_cvReviveHold, "scuffle_holdtime", "0.1", "Chip away at duration when holding jump");
-    SetupCvar(g_cvReviveTap, "scuffle_taptime", "1.5", "Chip away at duration when tapping jump");
-    SetupCvar(g_cvReviveLoss, "scuffle_losstime", "0.2", "Progress chip away at missed jumps");
+    SetupCvar(g_cvAnyTokens, "scuffle_any", "-1", "-1: Infinite. >0: Shared with attack, ledge and ground tokens of value -1.");
+    SetupCvar(g_cvAttackTokens, "scuffle_attack", "-1", "-1: Infinite. >0: Times a survivor can revive from an SI attack hold.");
+    SetupCvar(g_cvLedgeTokens, "scuffle_ledge", "-1", "-1: Infinite. >0: Times a survivor can revive from a ledge.");
+    SetupCvar(g_cvGroundTokens, "scuffle_ground", "-1", "-1: Infinite. >0: Times a survivor can revive from the ground.");
+    SetupCvar(g_cvRequires, "scuffle_requires", "", "Semicolon separated items and health e.g., 'item1=temphealth;item2'.");
+    SetupCvar(g_cvCooldown, "scuffle_cooldown", "10", "Cooldown (no reviving) between self-revivals.");
+    SetupCvar(g_cvLastLeg, "scuffle_lastleg", "2", "-1: Off: >=0: Stop self revivals at this strike.");
+    SetupCvar(g_cvMinHealth, "scuffle_minhealth", "0", "Stop self revivals at this health.");
+    SetupCvar(g_cvDuration, "scuffle_duration", "30.0", "Overall time to spread holds and taps.");
+    SetupCvar(g_cvReviveHold, "scuffle_holdtime", "0.1", "Time deduced on server frame when holding scuffle_shiftbit.");
+    SetupCvar(g_cvReviveTap, "scuffle_taptime", "1.5", "Time deduced on server frame when tapping scuffle_shiftbit.");
+    SetupCvar(g_cvReviveLoss, "scuffle_losstime", "0.2", "Time added on server frame when missing scuffle_shiftbit.");
     SetupCvar(g_cvReviveShiftBit, "scuffle_shiftbit", "1", "Shift bit for revival see https://sm.alliedmods.net/api/index.php?fastload=file&id=47&");
-    SetupCvar(g_cvKillChance, "scuffle_killchance", "0", "Chance of killing an SI when reviving");
-    SetupCvar(g_cvStayDown, "scuffle_staydown", "0", "0: Break SI hold and get up. 1: Break SI hold and stay down (unless SI dies, if requiring items, this makes it require double)");
-    SetupCvar(g_cvHunterStagger, "scuffle_hunterstagger", "3.0", "Hunter stagger and block time");
-    SetupCvar(g_cvSmokerStagger, "scuffle_smokerstagger", "1.2", "Smoker stagger and block time");
-    SetupCvar(g_cvChargerStagger, "scuffle_chargerstagger", "3.5", "Charger stagger and block time");
-    SetupCvar(g_cvJockeyStagger, "scuffle_jockeystagger", "1.2", "Jockey stagger and block time");
-    SetupCvar(g_cvRequireSlots, "scuffle_slots", "43", "Zero based slot search order (slot 1 is ignored)");
+    SetupCvar(g_cvKillChance, "scuffle_killchance", "0", "Chance of killing an SI when reviving.");
+    SetupCvar(g_cvStayDown, "scuffle_staydown", "0", "0: Break SI hold and get up. 1: Break SI hold and stay down.");
+    SetupCvar(g_cvHunterStagger, "scuffle_hunterstagger", "3.0", "Hunter stagger and secondary attack block time.");
+    SetupCvar(g_cvSmokerStagger, "scuffle_smokerstagger", "1.2", "Smoker stagger and secondary attack block time.");
+    SetupCvar(g_cvChargerStagger, "scuffle_chargerstagger", "3.5", "Charger stagger and secondary attack block time.");
+    SetupCvar(g_cvJockeyStagger, "scuffle_jockeystagger", "1.2", "Jockey stagger and secondary attack block time.");
+    SetupCvar(g_cvRequireSlots, "scuffle_slots", "", "Zero based slot search order (slot 1 is ignored).");
+    SetupCvar(g_cvHurtSurvivor, "scuffle_hurt", "1", "Hurt survivor this amount per second (applies on self revival).");
     AutoExecConfig(true, "scuffle");
 
     // if scuffle is reloaded, get all clients back on the same page
@@ -473,16 +475,10 @@ public void UpdateConVarsHook(Handle cvHandle, const char[] oldVal, const char[]
 
     else if (StrEqual(cvName, "scuffle_holdtime")) {
         g_reviveHoldTime = GetConVarFloat(cvHandle);
-        if (g_reviveHoldTime >= g_reviveDuration) {
-            g_reviveHoldTime += g_reviveLossTime;
-        }
     }
 
     else if (StrEqual(cvName, "scuffle_taptime")) {
         g_reviveTapTime = GetConVarFloat(cvHandle);
-        if (g_reviveTapTime >= g_reviveDuration) {
-            g_reviveTapTime += g_reviveLossTime;
-        }
     }
 
     else if (StrEqual(cvName, "scuffle_losstime")) {
@@ -526,8 +522,12 @@ public void UpdateConVarsHook(Handle cvHandle, const char[] oldVal, const char[]
 
     else if (StrEqual(cvName, "scuffle_slots")) {
         GetConVarString(cvHandle, g_requireSlots, sizeof(g_requireSlots));
-        // survivors always have pistols when incapicitated
+        // survivors always have pistols when incapacitated
         ReplaceString(g_requireSlots, sizeof(g_requireSlots), "1", "");
+    }
+
+    else if (StrEqual(cvName, "scuffle_hurt")) {
+        g_hurtSurvivor = GetConVarInt(cvHandle);
     }
 }
 
@@ -539,7 +539,7 @@ bool HasRequirement(int client) {
     * If a specific item (e.g., pills, adrenaline) is required for a scuffle,
     * this function will scan client for that item. If an item has its health
     * defined, its associated health is only applied after striking the client.
-    * If a survivor never fully goes down and isn't truly incapicitated, the
+    * If a survivor never fully goes down and isn't truly incapacitated, the
     * associated health will not be applied.
     *
     * Searches are case insensitive (e.g, KIT = Kit = kit). They can also be
@@ -731,8 +731,8 @@ void RecordClientHealth(int client) {
     /**
     * Take a snapshot of a survivors health and health buffer
     *
-    * Record a client's health state. If a client is not incapicitated their
-    * health is recorded unmodified. If a client is incapicitated the health
+    * Record a client's health state. If a client is not incapacitated their
+    * health is recorded unmodified. If a client is incapacitated the health
     * recorded is modified to hurt every one second while down. This will not
     * reflect on a survivor that is helped up by someone else but will affect
     * survivors that revive themselves (in an effort to prevent abuse).
@@ -762,8 +762,8 @@ void RecordClientHealth(int client) {
         // this penalty will apply if the user gets themselves up
         if (attackHealth[client] < gameTime) {
             attackHealth[client] = gameTime + 1.0;
-            g_healthBuffer[client] -= 1.0;
-            g_health[client] -= 1;
+            g_healthBuffer[client] -= float(g_hurtSurvivor);
+            g_health[client] -= g_hurtSurvivor;
         }
     }
 }
@@ -817,6 +817,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 
     static float gameTime;
     static int attackerId;
+    static int reviving;
     static int ent;
 
     if (IsClientConnected(client) && GetClientTeam(client) == 2) {
@@ -840,22 +841,20 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
                 g_lastScuffle[client] = gameTime;
             }
 
-            // if autoreviving set g_reviveLossTime to < 0.0 e.g, -0.01
-            if (g_reviveLossTime < 0.0) {
-                g_lastScuffle[client] += g_reviveLossTime * -1;
+            else if (gameTime - g_lastScuffle[client] < 0.0) {
+                g_lastScuffle[client] = gameTime;
             }
 
-            static int reviving;
-            reviving = (buttons == g_reviveShiftBit);
+            reviving = (buttons & g_reviveShiftBit);
 
-            if (gameTime + g_reviveDuration - g_lastScuffle[client] > g_reviveDuration) {
+            if (gameTime - g_reviveDuration <= g_lastScuffle[client]) {
                 switch (reviving) {
                     case 1: g_lastScuffle[client] -= g_reviveHoldTime;
                     case 0: g_lastScuffle[client] += g_reviveLossTime;
                 }
             }
 
-            if (g_lastKeyPress[client] != g_reviveShiftBit && reviving) {
+            if (!reviving && g_lastKeyPress[client] & g_reviveShiftBit) {
                 g_lastScuffle[client] -= g_reviveTapTime;
             }
 
