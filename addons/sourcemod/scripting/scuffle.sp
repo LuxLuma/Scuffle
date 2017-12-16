@@ -10,7 +10,7 @@
 #include <sdkhooks>
 #pragma newdecls required
 #define PLUGIN_NAME "Scuffle"
-#define PLUGIN_VERSION "0.0.16"
+#define PLUGIN_VERSION "0.0.17"
 
 ConVar g_cvRequires; char g_requirementsRaw[1024];  // e.g., "kit=30;pills=50;adrenaline"
 char g_requirements[32][32];  // required items to revive e.g., kit, pills, adrenaline
@@ -357,6 +357,7 @@ void SetRevive(int client, int count) {
 
             SetEntProp(client, Prop_Send, "m_currentReviveCount", count);
             SetEntProp(client, Prop_Send, "m_bIsOnThirdStrike", isMaxed, 1);
+            SetEntProp(client, Prop_Send, "m_isGoingToDie", isMaxed);
         }
     }
 }

@@ -1,4 +1,7 @@
 # Scuffle Change Log
+## [0.0.17] - 2017-16-12
+### Fixed
+- Survivors now murmur clues in their black and white state (credit to cravenge)
 
 ## [0.0.16] - 2017-15-12
 ### Added
