@@ -1,0 +1,71 @@
+"Phrases" {
+
+    // Your help is appreciated at translating the few phrases found here into
+    // your native language. Scuffle does not accept multiple translations in a
+    // single file (you're free to do it, but don't ask for it to be accepted).
+    //
+    // Scuffle follows a multi-file translation setup and it's pretty simple to
+    // get started. The following GETTING STARTED should walk you through it.
+    //
+    // GETTING STARTED
+    // 1. Check .../left4dead2/addons/sourcemod/configs/languages.cfg
+    // 2. Find your ISO language code e.g., ro, ar (referenced later as $ISOCODE)
+    // 3. Copy scuffle.phrases.txt into .../left4dead2/addons/sourcemod/translations/$ISOCODE
+    // 4. Edit the file and replace all the "en" keys with "$ISOCODE" e.g, es, ro, ar
+    // 5. Edit the values associated with "$ISOCODE" into your native language
+    // 6. Restart the server or use "changelevel" to load up the translations
+    // 7. To test in another language, change cvar cl_language and repeat step 6
+    // 8. Share it on https://forums.alliedmods.net/showthread.php?t=303635
+    //
+    // NOT SURE HOW TO TRANSLATE SOMETHING EXACTLY?
+    // No need to be perfect. Translate it to the best of your ability and just
+    // try to get the point across as succinctly as possible. Thanks!
+    //
+    // EXAMPLE
+    // 1. See .../left4dead2/addons/sourcemod/translations/es/scuffle.phrases.txt
+    // 2. You don't have to understand it, but notice "en" changed to "es"
+    // 3. Notice the values related to each "es" have changed.
+    //
+    // When in doubt, see the following
+    // https://wiki.alliedmods.net/Translations_(SourceMod_Scripting)
+
+    "COOLINGDOWN" {
+        "ar" "!!في انتظار. نادي للمساعدة من الاصدقاء
+"
+    }
+
+    "NOTOKENS" {
+        "ar" "!!كل محاولات الانقاد عاطلة. نادي للمساعدة من الاصدقاء"
+    }
+
+    "NOLEDGE" {
+        "ar" "!!محاولة الانقاد من الحافة عاطلة. نادي للمساعدة من الاصدقاء
+"
+    }
+
+    "NOGROUND" {
+        "ar" "!!محاولة النهوض غير شغالة. نادي للمساعدة من الاصدقاء"
+    }
+
+    "NOATTACK" {
+        "ar" "!!محاولة الدفاع عن النفس غير شغالة. نادي للمساعدة من الاصدقاء
+"
+    }
+
+    "LASTLEG" {
+        "ar" "!!انتهت محاولات المساعدة الذاتية. نادي للمساعدة من الاصدقاء
+"
+    }
+
+    "TOWEAK" {
+        "ar" "!!لست قوي بما فيه الكفاية. نادي للمساعدة من الاصدقاء"
+    }
+
+    "MISSINGREQ" {
+        "ar" "!!المتطلبات مفقودة على سبيل المثال، حبوب الدواء او الأدرينالين"
+    }
+
+    "GETUP" {
+        "ar" "!!اضغط على مفتاح القفز لإحياء الذاتي"
+    }
+}
