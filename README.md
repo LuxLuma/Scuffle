@@ -208,9 +208,19 @@ This value should be several times higher than ```scuffle_holdtime``` in order t
 ## Thanks
 This plugin was heavily influenced by the works of [panxiaohai Struggle](https://forums.alliedmods.net/showthread.php?t=175806) plugin. Thanks to **Timocop** for being a great friend and wizard at this. Thanks to **Lux** for his collaboration, tenacity and uncanny ability to break stuff. 
 
-## Reaching Me
+## Reaching Us
+We have a thread on AlliedModders for feedback regarding Scuffle.
+
+- [AlliedModders Thread](https://forums.alliedmods.net/showthread.php?t=303635)
+
+### NgBUCKWANGS
 I love L4D2, developing, testing and running servers more than I like playing the game. Although I do enjoy the game and it is undoubtedly my favorite game, it is the community I think I love the most. It's always good to meet new people with the same interest :)
 
-- [My Steam Profile](http://steamcommunity.com/id/buckwangs/)
-- [My Scuffle GitLab Page](https://gitlab.com/vbgunz/Scuffle)
-- [AlliedModders Thread](https://forums.alliedmods.net/showthread.php?t=303635)
+- [NgBUCKWANGS Steam Profile](http://steamcommunity.com/id/buckwangs/)
+- [NgBUCKWANGS Scuffle GitLab Page](https://gitlab.com/vbgunz/Scuffle)
+
+### Lux
+Don't steal daddy's car.
+
+- [Don't Steal Daddy's Car](https://www.youtube.com/watch?v=UOlaEZg1hlc)
+- [Lux Scuffle GitHub Page](https://github.com/LuxLuma/Scuffle)
