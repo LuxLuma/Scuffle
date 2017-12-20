@@ -1,4 +1,8 @@
 # Scuffle Change Log
+## [0.0.18] - 2017-18-12
+### Added
+- Translations (Spanish now included)
+
 ## [0.0.17] - 2017-16-12
 ### Fixed
 - Survivors now murmur clues in their black and white state (credit to cravenge)

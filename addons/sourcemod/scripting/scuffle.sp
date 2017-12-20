@@ -10,7 +10,7 @@
 #include <sdkhooks>
 #pragma newdecls required
 #define PLUGIN_NAME "Scuffle"
-#define PLUGIN_VERSION "0.0.17"
+#define PLUGIN_VERSION "0.0.18"
 
 ConVar g_cvRequires; char g_requirementsRaw[1024];  // e.g., "kit=30;pills=50;adrenaline"
 char g_requirements[32][32];  // required items to revive e.g., kit, pills, adrenaline
@@ -262,6 +262,8 @@ public void OnClientPostAdminCheck(int client) {
 }
 
 public void OnPluginStart() {
+    LoadTranslations("scuffle.phrases");
+
     HookEvent("round_start", RoundStartHook);
     HookEvent("heal_success", HealSuccessHook);
     HookEvent("player_death", PlayerDeathHook);
@@ -658,35 +660,35 @@ bool CanPlayerScuffle(int client) {
     g_scuffling[client] = 1;
 
     if (g_cooldowns[client] > GetGameTime()) {
-        notice = "Cooling down. Call for rescue!!";
+        notice = "COOLINGDOWN";
         status[client] = -3;
     }
 
     if (g_anyTokens[client] != -1) {
         if (g_anyTokens[client] == 0) {
-            notice = "All scuffling disabled. Call for rescue!!";
+            notice = "NOTOKENS";
             status[client] = -1;
         }
 
         else if (attack[client] == -1 && g_ledgeTokens[client] == 0) {
-            notice = "Ledge scuffle disabled. Call for rescue!!";
+            notice = "NOLEDGE";
             status[client] = -5;
         }
 
         else if (attack[client] == -2 && g_groundTokens[client] == 0) {
-            notice = "Ground scuffle disabled. Call for rescue!!";
+            notice = "NOGROUND";
             status[client] = -6;
         }
 
         else if (attack[client] > 0 && g_attackTokens[client] == 0) {
-            notice = "Attack scuffle disabled. Call for rescue!!";
+            notice = "NOATTACK";
             status[client] = -7;
         }
     }
 
     if (g_lastLeg >= 0) {
         if (GetEntProp(client, Prop_Send, "m_currentReviveCount") >= g_maxRevives) {
-            notice = "Out of revives. Call for rescue!!";
+            notice = "LASTLEG";
             status[client] = -2;
         }
     }
@@ -694,7 +696,7 @@ bool CanPlayerScuffle(int client) {
     // this checks against ledges and SI *not* ground incaps
     if (!GetEntProp(client, Prop_Send, "m_isIncapacitated")) {
         if (g_health[client] + GetClientHealthBuffer(client) <= float(g_minHealth)) {
-            notice = "Not strong enough. Call for rescue!!";
+            notice = "TOWEAK";
             status[client] = -4;
         }
     }
@@ -705,17 +707,17 @@ bool CanPlayerScuffle(int client) {
         }
 
         else {
-            notice = "Requirements missing e.g., pills, adrenaline";
+            notice = "MISSINGREQ";
             status[client] = -8;
         }
     }
 
     if (status[client] > 0) {
-        notice = "Tap or hold to self-revive!";
+        notice = "GETUP";
         key = g_shiftKey;
     }
 
-    Format(notice, sizeof(notice), "[scuffle] %s", notice);
+    Format(notice, sizeof(notice), "[scuffle] %T", notice, client);
     DisplayDirectorHint(client, notice, 5, "icon_Tip", key);
     return status[client] > 0;
 }

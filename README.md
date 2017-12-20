@@ -205,8 +205,21 @@ Note: The name here is a bit misleading, this is applied on release, not tap.
 
 This value should be several times higher than ```scuffle_holdtime``` in order to be faster and more rewarding (compared to holding the ```scuffle_shiftbit```).  If this cvar value is greater than ```scuffle_duration``` the revival will be instantaneous on release.
 
+## Translations
+It would be nice to translate Scuffle into as many languages as possible. If your language is not supported your help at translating would be appreciated. Follow these steps to translate the plugins phrases into another language.
+
+0. No need to be perfect...
+1. Check ```.../left4dead2/addons/sourcemod/configs/languages.cfg```
+2. Find your ISO language code (referenced later as ```$ISOCODE```)
+3. Copy ```scuffle.phrases.txt``` into ```.../left4dead2/addons/sourcemod/translations/$ISOCODE```
+4. Edit the file and replace all the ```"en"``` keys with ```"$ISOCODE"``` e.g, es, ro, ar
+5. Edit the values associated with ```"$ISOCODE"``` into your native language
+6. Restart the server or use "```changelevel```" to load up the translations
+7. To test in another language, change cvar ```cl_language``` and repeat step 6
+8. Share it on our [AlliedModders Thread](https://forums.alliedmods.net/showthread.php?t=303635)
+
 ## Thanks
-This plugin was heavily influenced by the works of [panxiaohai Struggle](https://forums.alliedmods.net/showthread.php?t=175806) plugin. Thanks to **Timocop** for being a great friend and wizard at this. Thanks to **Lux** for his collaboration, tenacity and uncanny ability to break stuff. 
+This plugin was heavily influenced by the works of [panxiaohai Struggle](https://forums.alliedmods.net/showthread.php?t=175806) plugin. Thanks to **Timocop** for being a great friend and wizard at this. Thanks to **Lux** for his collaboration, tenacity and uncanny ability to break stuff. Thanks to Asherkin for pointing out ```cl_language```.
 
 ## Reaching Us
 We have a thread on AlliedModders for feedback regarding Scuffle.
