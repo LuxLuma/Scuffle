@@ -10,7 +10,7 @@
 #include <sdkhooks>
 #pragma newdecls required
 #define PLUGIN_NAME "Scuffle"
-#define PLUGIN_VERSION "0.0.18"
+#define PLUGIN_VERSION "0.0.19"
 
 ConVar g_cvRequires; char g_requirementsRaw[1024];  // e.g., "kit=30;pills=50;adrenaline"
 char g_requirements[32][32];  // required items to revive e.g., kit, pills, adrenaline
@@ -1076,6 +1076,7 @@ static void ShowProgressBar(int iClient, const float fStartTime, const float fDu
 
     SetEntPropFloat(iClient, Prop_Send, "m_flProgressBarStartTime", fStartTime);
     SetEntPropFloat(iClient, Prop_Send, "m_flProgressBarDuration", fDuration);
+    SetEntPropEnt(iClient, Prop_Send, "m_reviveOwner", iClient);
 }
 
 static void Client_ExecuteCheat(int iClient, const char[] sCmd, const char[] sArgs) {
